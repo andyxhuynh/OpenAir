@@ -249,13 +249,13 @@
         windSpeedInput.addEventListener('input', (e) => {
             windSpeed = parseFloat(e.target.value);
             updateWindUI();
-            renderHeatmapLayers(isElderMode ? 1.5 : 1);
+            renderHeatmapLayers(1);
         });
 
         windDirInput.addEventListener('input', (e) => {
             windDeg = parseFloat(e.target.value);
             updateWindUI();
-            renderHeatmapLayers(isElderMode ? 1.5 : 1);
+            renderHeatmapLayers(1);
         });
 
         updateWindUI();
@@ -273,7 +273,7 @@
             windDeg = deg;
             windDirInput.value = Math.round(windDeg);
             updateWindUI();
-            renderHeatmapLayers(isElderMode ? 1.5 : 1);
+            renderHeatmapLayers(1);
         }
 
         if (compassSvg) {
@@ -370,7 +370,7 @@
                         Factories near the highway are releasing heavy smoke. It is recommended to skip your daily walk outside until this clears up.
                     </p>
                 `;
-                renderHeatmapLayers(1.4);
+                renderHeatmapLayers(1);
             } else {
                 bodyElement.classList.remove('elder-mode');
                 modeToggleBtn.innerHTML = "👴 Switch to Elder Mode";
