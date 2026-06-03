@@ -33,6 +33,21 @@
             pointer-events: none; /* let map interactions through */
             z-index: 2;
         }
+        /* Tooltip style for custom AOI icons */
+        .factory-tooltip {
+            background: rgba(22, 163, 74, 0.9);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.6);
+            border-radius: 0.4rem;
+            padding: 0.15rem 0.35rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            box-shadow: 0 1px 8px rgba(0,0,0,0.2);
+        }
+        .factory-tooltip::after {
+            border-top-color: rgba(22, 163, 74, 0.9);
+        }
+
         /* Elder mode styles for Bernard: High contrast and accessible text scaling */
         .elder-mode {
             font-size: 1.35rem;
@@ -137,6 +152,8 @@
         // Global variables for dashboard state
         let isElderMode = false;
         let heatmapLayer = null;
+        let factoryMarker = null; // Track marker reference for easy cleanups
+        let factoryCircle = null;
 
         // Initialize Map centered near Lyon/Villeurbanne center area
         const centralLat = 45.7685;
@@ -147,6 +164,23 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
+
+        // CREATE A CUSTOM PANE FOR THE ICON OVERLAY
+        // This ensures the icon stays layered on top of the moving canvas particles
+        map.createPane('iconOverlayPane');
+        map.getPane('iconOverlayPane').style.zIndex = 650; // Above tile layers, heatmaps, and canvas overlays
+        map.getPane('iconOverlayPane').style.pointerEvents = 'none'; // Keeps map drag/click interactions crisp
+
+        // Reusable custom factory icon for area markers.
+        // Replace iconUrl with your actual PNG path if available.
+        function createFactoryIcon(size = [42, 42]) {
+            return L.icon({
+                iconUrl: 'pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg',
+                iconSize: size,
+                iconAnchor: [size[0] / 2, size[1]],
+                popupAnchor: [0, -size[1] / 2]
+            });
+        }
 
         // Industrial corridor emitting dynamic point plumes
         const emissionSources = [
@@ -197,34 +231,57 @@
             if (heatmapLayer) {
                 map.removeLayer(heatmapLayer);
             }
+            if (factoryMarker) {
+                map.removeLayer(factoryMarker);
+            }
+            if (factoryCircle) {
+                map.removeLayer(factoryCircle);
+            }
 
             const heatPoints = [];
 
             // A. INJECT ENTIRE LYON BASELINE METROPOLITAN MATRIX (Forces background to Green)
-            // Loops across bounding box coordinates covering entire visible city maps
             const latMin = 45.7200, latMax = 45.8100;
             const lngMin = 4.8000, lngMax = 4.9300;
-            const step = 0.0045; // Density step separation of clean baseline sensors
+            const step = 0.0045; 
 
             for (let l = latMin; l <= latMax; l += step) {
                 for (let g = lngMin; g <= lngMax; g += step) {
-                    // Seed a safe, ambient low-intensity tracking flag (0.15 intensity)
                     heatPoints.push([l, g, 0.15]);
                 }
             }
 
-            // B. COMPUTE ADVECTION SMOKE PLUMES (Overlays Red/Yellow shifts dynamically)
+            // B. COMPUTE ADVECTION SMOKE PLUMES
             const rad = windDeg * Math.PI / 180;
             const driftLat = -Math.sin(rad) * windSpeed * 0.0018;
             const driftLng = Math.cos(rad) * windSpeed * 0.0018;
 
             emissionSources.forEach(source => {
-                // Stack high density points at factory origin to force red/orange priority overrides
                 heatPoints.push([source.lat, source.lng, 1.0]);
                 heatPoints.push([source.lat + driftLat * 0.3, source.lng + driftLng * 0.3, 0.9]);
                 heatPoints.push([source.lat + driftLat * 0.6, source.lng + driftLng * 0.6, 0.75]);
                 heatPoints.push([source.lat + driftLat * 1.0, source.lng + driftLng * 1.0, 0.55]);
                 heatPoints.push([source.lat + driftLat * 1.5, source.lng + driftLng * 1.5, 0.35]);
+
+                // C. ADD THE CUSTOM FACTORY ICON OVER THE CENTER
+                factoryMarker = L.marker([source.lat, source.lng], {
+                    icon: createFactoryIcon(isElderMode ? [60, 60] : [42, 42])
+                }).addTo(map);
+                factoryMarker.bindTooltip(source.name, {
+                    permanent: true,
+                    direction: 'top',
+                    offset: [0, -10],
+                    className: 'factory-tooltip'
+                }).openTooltip();
+
+                // Fallback visual so the AOI is always visible even if the icon file fails
+                factoryCircle = L.circleMarker([source.lat, source.lng], {
+                    radius: isElderMode ? 12 : 8,
+                    color: '#dc2626',
+                    fillColor: '#fca5a5',
+                    fillOpacity: 0.45,
+                    weight: 2
+                }).addTo(map);
             });
 
             // Initialize Heatmap Spectrum Engine
