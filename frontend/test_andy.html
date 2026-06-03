@@ -24,6 +24,16 @@
             border-radius: 0.5rem;
             z-index: 1;
         }
+        /* Canvas overlay placed above the map for plume particles */
+        #map-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* let map interactions through */
+            z-index: 2;
+        }
         /* Elder mode styles for Bernard: High contrast and accessible text scaling */
         .elder-mode {
             font-size: 1.35rem;
@@ -99,14 +109,36 @@
         <div class="lg:col-span-2 bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4">
             <div class="flex justify-between items-center">
                 <h2 class="text-md font-bold text-gray-900">Live Air Quality Mapping Overlay</h2>
-                <div class="flex gap-4 text-xs font-semibold">
+                <div class="flex gap-4 text-xs font-semibold items-center">
                     <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-red-500 inline-block opacity-60"></span> High Risk</span>
                     <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block opacity-60"></span> Safe Zone</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <!-- Compass display -->
+                    <div id="compass" class="flex flex-col items-center text-xs">
+                        <svg id="compass-svg" width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="24" cy="24" r="22" stroke="#94a3b8" stroke-width="1" fill="#fff"/>
+                            <g id="compass-arrow" transform="translate(24 24)">
+                                <polygon points="0,-16 6,6 0,0 -6,6" fill="#ef4444"/>
+                                <circle cx="0" cy="0" r="2" fill="#111827"/>
+                            </g>
+                        </svg>
+                        <div class="text-xs text-gray-500 mt-1">Wind Dir: <span id="wind-deg">225</span>°</div>
+                    </div>
+
+                    <!-- Wind speed slider -->
+                    <div class="flex flex-col items-start text-xs">
+                        <label class="text-gray-600">Wind Speed: <span id="wind-speed-label">2.0</span> m/s</label>
+                        <input id="wind-speed" type="range" min="0" max="8" step="0.1" value="2" class="w-40" />
+                        <input id="wind-dir" type="range" min="0" max="360" step="1" value="225" class="w-40 mt-1" />
+                    </div>
                 </div>
             </div>
             
             <!-- Map Target Container -->
-            <div id="map"></div>
+            <div id="map" class="relative">
+                <canvas id="map-overlay"></canvas>
+            </div>
         </div>
     </main>
 
@@ -187,8 +219,21 @@
             });
         }
 
+        // Initialize marker advection state after render
+        function initMarkerAdvection() {
+            activeMarkers.forEach(m => {
+                // link back to AOI data by matching lat/lng approximately
+                const latlng = m.getLatLng();
+                const aoi = areasOfInterest.find(a => Math.abs(a.lat - latlng.lat) < 0.01 && Math.abs(a.lng - latlng.lng) < 0.01);
+                m._aoi = aoi || null;
+                m._basePoint = map.latLngToContainerPoint([latlng.lat, latlng.lng]);
+                m._advect = {x: 0, y: 0};
+            });
+        }
+
         // Render standard layout layers on primary launch
         renderMapLayers(1);
+        initMarkerAdvection();
 
         // 4. ACCESSIBILITY TOGGLE LOGIC (Elder Mode Strategy for Bernard)
         const modeToggleBtn = document.getElementById('mode-toggle');
@@ -238,6 +283,195 @@
                 renderMapLayers(1);
             }
         });
+
+        // --- Wind & Particle Overlay (Interactive Plume Simulation) ---
+        const windSpeedInput = document.getElementById('wind-speed');
+        const windDirInput = document.getElementById('wind-dir');
+        const windDegLabel = document.getElementById('wind-deg');
+        const windSpeedLabel = document.getElementById('wind-speed-label');
+        const compassArrow = document.getElementById('compass-arrow');
+
+        let windSpeed = parseFloat(windSpeedInput.value); // m/s (visual scale)
+        let windDeg = parseFloat(windDirInput.value); // degrees clockwise, 0 = East
+
+        function updateWindUI() {
+            windDegLabel.textContent = Math.round(windDeg);
+            windSpeedLabel.textContent = windSpeed.toFixed(1);
+            // rotate compass arrow (SVG group) — transform origin is center
+            if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windDeg})`);
+        }
+
+        windSpeedInput.addEventListener('input', (e) => {
+            windSpeed = parseFloat(e.target.value);
+            updateWindUI();
+        });
+
+        windDirInput.addEventListener('input', (e) => {
+            windDeg = parseFloat(e.target.value);
+            updateWindUI();
+        });
+
+        updateWindUI();
+
+        // Make the compass interactive (click/drag/touch to set wind direction)
+        const compassSvg = document.getElementById('compass-svg');
+        let isDraggingCompass = false;
+
+        function setWindDegFromEvent(ev) {
+            const rect = compassSvg.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const clientX = ev.clientX;
+            const clientY = ev.clientY;
+            let dx = clientX - cx;
+            let dy = clientY - cy;
+            // angle in radians where 0 = East, positive clockwise (screen coords)
+            const ang = Math.atan2(dy, dx);
+            let deg = ang * 180 / Math.PI;
+            if (deg < 0) deg += 360;
+            windDeg = deg;
+            windDirInput.value = Math.round(windDeg);
+            updateWindUI();
+        }
+
+        if (compassSvg) {
+            compassSvg.style.cursor = 'pointer';
+            compassSvg.addEventListener('mousedown', (e) => {
+                isDraggingCompass = true;
+                setWindDegFromEvent(e);
+            });
+            window.addEventListener('mousemove', (e) => {
+                if (isDraggingCompass) setWindDegFromEvent(e);
+            });
+            window.addEventListener('mouseup', () => { isDraggingCompass = false; });
+
+            // Touch support
+            compassSvg.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                isDraggingCompass = true;
+                setWindDegFromEvent(e.touches[0]);
+            }, {passive:false});
+            window.addEventListener('touchmove', (e) => {
+                if (isDraggingCompass && e.touches && e.touches[0]) {
+                    setWindDegFromEvent(e.touches[0]);
+                }
+            }, {passive:false});
+            window.addEventListener('touchend', () => { isDraggingCompass = false; });
+        }
+
+        // Canvas overlay and particle system
+        const canvas = document.getElementById('map-overlay');
+        const ctx = canvas.getContext('2d');
+
+        let particles = [];
+        let lastTime = performance.now();
+
+        function resizeCanvas() {
+            const container = map.getContainer();
+            const rect = container.getBoundingClientRect();
+            canvas.width = Math.round(rect.width);
+            canvas.height = Math.round(rect.height);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+        }
+
+        map.on('move resize zoom', () => {
+            // on large interactions, clear particles to avoid coordinate drift
+            particles = [];
+            resizeCanvas();
+            // recompute base points for marker advection
+            activeMarkers.forEach(m => {
+                if (m._aoi) {
+                    m._basePoint = map.latLngToContainerPoint([m._aoi.lat, m._aoi.lng]);
+                    m._advect = {x: 0, y: 0};
+                }
+            });
+        });
+
+        resizeCanvas();
+
+        function emitFromAOI(aoi, dt) {
+            if (aoi.pollution !== 'high') return;
+            // emission rate per second
+            const rate = 60; // particles per second
+            const count = Math.floor(rate * dt);
+            const pt = map.latLngToContainerPoint([aoi.lat, aoi.lng]);
+            for (let i = 0; i < count; i++) {
+                const life = 3 + Math.random() * 4; // seconds
+                // wind vector (convert degrees to radians, 0deg = East, clockwise)
+                const rad = windDeg * Math.PI / 180;
+                const vx = Math.cos(rad) * windSpeed * (20 + Math.random() * 10); // px/s scale
+                const vy = Math.sin(rad) * windSpeed * (20 + Math.random() * 10);
+                // small random offset at emission
+                const x = pt.x + (Math.random() - 0.5) * 10;
+                const y = pt.y + (Math.random() - 0.5) * 10;
+                particles.push({x, y, vx, vy, life, age: 0});
+            }
+        }
+
+        function updateAndDraw(now) {
+            const dt = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+
+            // emit from each AOI
+            areasOfInterest.forEach(aoi => emitFromAOI(aoi, dt));
+
+            // update
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                // diffusion/random jitter
+                p.vx += (Math.random() - 0.5) * 8 * dt;
+                p.vy += (Math.random() - 0.5) * 8 * dt;
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.age += dt;
+                if (p.age >= p.life) particles.splice(i, 1);
+            }
+
+            // draw
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // subtle blur trail by drawing translucent rectangle
+            ctx.fillStyle = 'rgba(255,255,255,0.03)';
+            ctx.fillRect(0,0,canvas.width,canvas.height);
+
+            particles.forEach(p => {
+                const alpha = Math.max(0, 1 - p.age / p.life) * 0.7;
+                const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 10);
+                grd.addColorStop(0, `rgba(239,68,68,${alpha})`);
+                grd.addColorStop(1, `rgba(239,68,68,0)`);
+                ctx.fillStyle = grd;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Advect circle markers subtly with wind (pixel-based, mapped back to LatLng)
+            const rad = windDeg * Math.PI / 180;
+            const wx = Math.cos(rad) * windSpeed * 30; // pixels per second scale
+            const wy = Math.sin(rad) * windSpeed * 30;
+            activeMarkers.forEach(m => {
+                if (!m._aoi) return;
+                if (m._aoi.pollution !== 'high') return; // only advect high-pollution bubbles
+                // update advected offset
+                m._advect.x += wx * dt + (Math.random() - 0.5) * 6 * dt;
+                m._advect.y += wy * dt + (Math.random() - 0.5) * 6 * dt;
+                // dampen over time so bubbles don't drift forever
+                m._advect.x *= 0.995;
+                m._advect.y *= 0.995;
+                // compute new container point and convert to latlng
+                const base = m._basePoint || map.latLngToContainerPoint(m.getLatLng());
+                const newPoint = L.point(base.x + m._advect.x, base.y + m._advect.y);
+                const newLatLng = map.containerPointToLatLng(newPoint);
+                m.setLatLng(newLatLng);
+            });
+
+            requestAnimationFrame(updateAndDraw);
+        }
+
+        requestAnimationFrame(updateAndDraw);
     </script>
 </body>
 </html>
