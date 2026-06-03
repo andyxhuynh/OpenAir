@@ -139,6 +139,7 @@
         // Global variables for dashboard state
         let isElderMode = false;
         let heatmapLayer = null;
+        let factoryMarker = null; // Track marker reference for easy cleanups
 
         // Initialize Map centered near Lyon/Villeurbanne center area
         const centralLat = 45.7685;
@@ -149,6 +150,12 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
+
+        // CREATE A CUSTOM PANE FOR THE ICON OVERLAY
+        // This ensures the icon stays layered on top of the moving canvas particles
+        map.createPane('iconOverlayPane');
+        map.getPane('iconOverlayPane').style.zIndex = 650; // Above tile layers, heatmaps, and canvas overlays
+        map.getPane('iconOverlayPane').style.pointerEvents = 'none'; // Keeps map drag/click interactions crisp
 
         // Industrial corridor emitting dynamic point plumes
         const emissionSources = [
@@ -181,34 +188,47 @@
             if (heatmapLayer) {
                 map.removeLayer(heatmapLayer);
             }
+            if (factoryMarker) {
+                map.removeLayer(factoryMarker);
+            }
 
             const heatPoints = [];
 
             // A. INJECT ENTIRE LYON BASELINE METROPOLITAN MATRIX (Forces background to Green)
-            // Loops across bounding box coordinates covering entire visible city maps
             const latMin = 45.7200, latMax = 45.8100;
             const lngMin = 4.8000, lngMax = 4.9300;
-            const step = 0.0045; // Density step separation of clean baseline sensors
+            const step = 0.0045; 
 
             for (let l = latMin; l <= latMax; l += step) {
                 for (let g = lngMin; g <= lngMax; g += step) {
-                    // Seed a safe, ambient low-intensity tracking flag (0.15 intensity)
                     heatPoints.push([l, g, 0.15]);
                 }
             }
 
-            // B. COMPUTE ADVECTION SMOKE PLUMES (Overlays Red/Yellow shifts dynamically)
+            // B. COMPUTE ADVECTION SMOKE PLUMES
             const rad = windDeg * Math.PI / 180;
             const driftLat = -Math.sin(rad) * windSpeed * 0.0018;
             const driftLng = Math.cos(rad) * windSpeed * 0.0018;
 
             emissionSources.forEach(source => {
-                // Stack high density points at factory origin to force red/orange priority overrides
                 heatPoints.push([source.lat, source.lng, 1.0]);
                 heatPoints.push([source.lat + driftLat * 0.3, source.lng + driftLng * 0.3, 0.9]);
                 heatPoints.push([source.lat + driftLat * 0.6, source.lng + driftLng * 0.6, 0.75]);
                 heatPoints.push([source.lat + driftLat * 1.0, source.lng + driftLng * 1.0, 0.55]);
                 heatPoints.push([source.lat + driftLat * 1.5, source.lng + driftLng * 1.5, 0.35]);
+
+                // C. ADD THE CUSTOM FACTORY ICON OVER THE CENTER
+                // Points explicitly to your exact filename string below
+                const adjustedIcon = L.icon({
+                    iconUrl: 'pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg',
+                    iconSize: isElderMode ? [60, 60] : [42, 42],
+                    iconAnchor: isElderMode ? [30, 30] : [21, 21]
+                });
+
+                factoryMarker = L.marker([source.lat, source.lng], { 
+                    icon: adjustedIcon,
+                    pane: 'iconOverlayPane' // Bind it to our custom elevated stack layout pane
+                }).addTo(map);
             });
 
             // Initialize Heatmap Spectrum Engine
