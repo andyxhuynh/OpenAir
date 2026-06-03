@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAir - Environmental Dashboard</title>
+    
+    <!-- Tailwind CSS for modern, clean layout styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS (Required for Map Rendering from Lab 2) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+          
+    <!-- Leaflet JS (Required for Map Routing from Lab 2) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <style>
+        /* Define map dimensions */
+        #map {
+            height: 550px;
+            width: 100%;
+            border-radius: 0.5rem;
+            z-index: 1;
+        }
+        /* Elder mode styles for Bernard: High contrast and accessible text scaling */
+        .elder-mode {
+            font-size: 1.35rem;
+        }
+        .elder-mode h1 { font-size: 2.25rem; }
+        .elder-mode h2 { font-size: 1.75rem; }
+        .elder-mode .nav-btn { padding: 0.75rem 1.5rem; font-size: 1.25rem; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 transition-all duration-200">
+
+    <!-- 1. DYNAMIC ALERT BANNER (Feature Definition) -->
+    <!-- States: bg-red-600 (High), bg-yellow-500 (Medium), hidden (Low/Green) -->
+    <div id="alert-banner" class="bg-red-600 text-white text-center py-3 px-4 font-bold tracking-wide shadow-md flex justify-center items-center gap-2">
+        <span>⚠️ CRITICAL AIR ALERT: High emissions detected near Industrial Corridor. Vulnerable groups should stay indoors.</span>
+    </div>
+
+    <!-- HEADER NAVIGATION -->
+    <header class="bg-white border-b border-gray-200 py-4 px-6 flex justify-between items-center shadow-sm">
+        <div class="flex items-center gap-2">
+            <span class="text-2xl">🍃</span>
+            <h1 class="text-xl font-bold text-gray-900 tracking-tight">OpenAir</h1>
+        </div>
+        
+        <!-- Accessibility Control for Demographics (Elder/Young Mode) -->
+        <button id="mode-toggle" class="nav-btn bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow transition text-sm">
+            👴 Switch to Elder Mode
+        </button>
+    </header>
+
+    <!-- MAIN INTERACTIVE DASHBOARD AREA -->
+    <main class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- SIDE PANEL: Actions & Persona Insights -->
+        <div class="space-y-6 lg:col-span-1">
+            
+            <!-- Live Status Card -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-lg font-bold mb-3 flex items-center gap-2 text-gray-900">
+                    📍 Current Region: <span class="text-blue-600">Villeurbanne</span>
+                </h2>
+                <hr class="my-3 border-gray-100">
+                
+                <!-- Plain language summaries tailored for Elena/Bernard -->
+                <div id="status-summary" class="space-y-3">
+                    <p class="text-sm text-gray-600 leading-relaxed">
+                        Showing hyper-local real-time environmental metrics compiled from weather stations and local factory monitoring sensors.
+                    </p>
+                    <div class="p-3 bg-red-50 text-red-800 rounded-lg border border-red-100 font-medium text-sm flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-red-600 animate-pulse"></span>
+                        Status: Unhealthy Air Quality Plumes Active
+                    </div>
+                </div>
+            </div>
+
+            <!-- Technical Insights (Plan B: Charts/Graphs placeholder hidden automatically in Elder Mode) -->
+            <div id="technical-panel" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-sm font-semibold tracking-wider text-gray-400 uppercase mb-3">Sensor Analytics (Advanced View)</h2>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Gauge Pressure:</span>
+                        <span class="font-mono font-medium">101,325 Pa</span>
+                    </div>
+                    <div class="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                        <div class="bg-red-500 h-full w-4/5"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 italic mt-1">Raw engineering metrics processed via backend REST data stream.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. GEOSPATIAL MAP INTERFACE (Leaflet Implementation) -->
+        <div class="lg:col-span-2 bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-md font-bold text-gray-900">Live Air Quality Mapping Overlay</h2>
+                <div class="flex gap-4 text-xs font-semibold">
+                    <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-red-500 inline-block opacity-60"></span> High Risk</span>
+                    <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block opacity-60"></span> Safe Zone</span>
+                </div>
+            </div>
+            
+            <!-- Map Target Container -->
+            <div id="map"></div>
+        </div>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="text-center py-8 text-xs text-gray-400 border-t border-gray-200 mt-12">
+        OpenAir Project Template • Built for Local Civic Diagnostics
+    </footer>
+
+    <!-- INTERACTIVE SCRIPTING LOGIC -->
+    <script>
+        // Global variables for dashboard state
+        let isElderMode = false;
+
+        // Initialize the Leaflet Map centered on Villeurbanne, France (Matching Laboratory 2 coordinate range)
+        const centralLat = 45.7785;
+        const centralLng = 4.8713;
+        const map = L.map('map').setView([centralLat, centralLng], 14);
+
+        // Load OpenStreetMap Tiles (Standard WMS Tiling framework)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // 3. AREAS OF INTEREST & GEOSPATIAL DATA OVERLAYS (Feature Mapping)
+        // Simulated GeoJSON points/radius blocks for factories and local microclimates
+        const areasOfInterest = [
+            {
+                name: "Villeurbanne Industrial Corridor (Factory Alpha)",
+                type: "factory",
+                lat: 45.7830,
+                lng: 4.8820,
+                pollution: "high",
+                description: "Simulated emission plume spike currently drifting South-West."
+            },
+            {
+                name: "Regional Community Park & School Zone",
+                type: "school",
+                lat: 45.7720,
+                lng: 4.8640,
+                pollution: "low",
+                description: "Air values nominal. Safe zone for sports and outdoor play routines."
+            }
+        ];
+
+        // Store map marker references to update sizing parameters dynamically
+        let activeMarkers = [];
+
+        function renderMapLayers(circleRadiusMultiplier = 1) {
+            // Clear existing markers from previous toggles
+            activeMarkers.forEach(m => map.removeLayer(m));
+            activeMarkers = [];
+
+            areasOfInterest.forEach(aoi => {
+                // Determine layout coloration based on real-time threat thresholds
+                const circleColor = aoi.pollution === "high" ? "#ef4444" : "#10b981";
+                
+                // Calculate size parameters dynamically based on selected demographic mode
+                const radiusSize = aoi.pollution === "high" ? 280 * circleRadiusMultiplier : 150 * circleRadiusMultiplier;
+
+                // Create a Leaflet CircleMarker for the overlay bubble
+                const marker = L.circle([aoi.lat, aoi.lng], {
+                    color: circleColor,
+                    fillColor: circleColor,
+                    fillOpacity: 0.45,
+                    radius: radiusSize 
+                }).addTo(map);
+
+                // Attach accessible popup windows matching descriptive needs for Elena/Bernard
+                marker.bindPopup(`
+                    <div style="font-family: sans-serif; line-height: 1.4;">
+                        <strong style="font-size: 1.1em; color: #111827;">${aoi.name}</strong><br>
+                        <span style="color: ${circleColor}; font-weight: bold;">Status: ${aoi.pollution.toUpperCase()} RISK</span>
+                        <p style="margin-top: 4px; font-size: 0.95em; color: #4b5563;">${aoi.description}</p>
+                    </div>
+                `);
+
+                activeMarkers.push(marker);
+            });
+        }
+
+        // Render standard layout layers on primary launch
+        renderMapLayers(1);
+
+        // 4. ACCESSIBILITY TOGGLE LOGIC (Elder Mode Strategy for Bernard)
+        const modeToggleBtn = document.getElementById('mode-toggle');
+        const bodyElement = document.body;
+        const technicalPanel = document.getElementById('technical-panel');
+        const statusSummary = document.getElementById('status-summary');
+
+        modeToggleBtn.addEventListener('click', () => {
+            isElderMode = !isElderMode;
+            
+            if (isElderMode) {
+                // Shift UI elements to High-Contrast/Large Font settings
+                bodyElement.classList.add('elder-mode');
+                modeToggleBtn.innerHTML = "🧒 Switch to Standard Mode";
+                modeToggleBtn.classList.replace('bg-blue-600', 'bg-gray-700');
+                
+                // Hide unnecessary engineering graphs to limit cognitive text clutter for Bernard
+                technicalPanel.classList.add('hidden');
+                
+                // Swap layout text with direct plain-language health directives
+                statusSummary.innerHTML = `
+                    <p class="font-bold text-red-700 text-lg">⚠️ AIR IS POOR TODAY</p>
+                    <p class="text-md text-gray-900 leading-relaxed font-medium">
+                        Factories near the highway are releasing heavy smoke. It is recommended to skip your daily walk outside until this clears up.
+                    </p>
+                `;
+
+                // Re-render map bubbles larger for easy viewing without visual strain
+                renderMapLayers(1.6);
+            } else {
+                // Revert to Standard Interface Settings
+                bodyElement.classList.remove('elder-mode');
+                modeToggleBtn.innerHTML = "👴 Switch to Elder Mode";
+                modeToggleBtn.classList.replace('bg-gray-700', 'bg-blue-600');
+                technicalPanel.classList.remove('hidden');
+                
+                statusSummary.innerHTML = `
+                    <p class="text-sm text-gray-600 leading-relaxed">
+                        Showing hyper-local real-time environmental metrics compiled from weather stations and local factory monitoring sensors.
+                    </p>
+                    <div class="p-3 bg-red-50 text-red-800 rounded-lg border border-red-100 font-medium text-sm flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-red-600 animate-pulse"></span>
+                        Status: Unhealthy Air Quality Plumes Active
+                    </div>
+                `;
+
+                renderMapLayers(1);
+            }
+        });
+    </script>
+</body>
+</html>
