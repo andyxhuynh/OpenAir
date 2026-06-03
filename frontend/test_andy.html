@@ -119,8 +119,6 @@
 
                     <div class="flex flex-col items-start text-xs">
                         <label class="text-gray-600">Wind Speed: <span id="wind-speed-label">2.0</span> m/s</label>
-                        <input id="wind-speed" type="range" min="0" max="8" step="0.1" value="2" class="w-40" />
-                        <input id="wind-dir" type="range" min="0" max="360" step="1" value="225" class="w-40 mt-1" />
                     </div>
                 </div>
             </div>
@@ -161,19 +159,37 @@
         ];
 
         // --- Wind & Particle Control States ---
-        const windSpeedInput = document.getElementById('wind-speed');
-        const windDirInput = document.getElementById('wind-dir');
         const windDegLabel = document.getElementById('wind-deg');
         const windSpeedLabel = document.getElementById('wind-speed-label');
         const compassArrow = document.getElementById('compass-arrow');
 
-        let windSpeed = parseFloat(windSpeedInput.value); 
-        let windDeg = parseFloat(windDirInput.value); 
+        let windSpeed = 2.0;
+        let windDeg = 225;
+        let simulationTime = 0;
+        let windNoiseOffset = Math.random() * 1000;  // Random seed for noise
 
         function updateWindUI() {
             windDegLabel.textContent = Math.round(windDeg);
             windSpeedLabel.textContent = windSpeed.toFixed(1);
             if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windDeg})`);
+        }
+
+        function updateWindAutomatically(deltaTime) {
+            simulationTime += deltaTime;
+            
+            // Wind speed oscillates between 0.5 and 6 m/s with a period of 20 seconds
+            windSpeed = 3.25 + 2.75 * Math.sin(simulationTime * Math.PI / 20);
+            
+            // Wind direction changes with random walk pattern
+            // Perlin-like noise using sine waves at different frequencies
+            const noise1 = Math.sin((simulationTime + windNoiseOffset) * 0.3) * 30;
+            const noise2 = Math.sin((simulationTime + windNoiseOffset) * 0.1) * 50;
+            const noise3 = Math.sin((simulationTime + windNoiseOffset) * 0.05) * 80;
+            
+            windDeg = (180 + noise1 + noise2 + noise3) % 360;
+            if (windDeg < 0) windDeg += 360;
+            
+            updateWindUI();
         }
 
         // 3. REGIONAL HEATMAP GENERATION WITH AMBIENT GREEN MATRIX
@@ -225,46 +241,12 @@
             }).addTo(map);
         }
 
-        // Re-render data matrix when wind values morph
-        windSpeedInput.addEventListener('input', (e) => {
-            windSpeed = parseFloat(e.target.value);
-            updateWindUI();
-            renderHeatmapLayers(1);
-        });
-
-        windDirInput.addEventListener('input', (e) => {
-            windDeg = parseFloat(e.target.value);
-            updateWindUI();
-            renderHeatmapLayers(1);
-        });
-
         updateWindUI();
 
-        // Compass interactivity mapping
+        // Compass interactivity mapping (disabled - wind now changes automatically)
         const compassSvg = document.getElementById('compass-svg');
-        let isDraggingCompass = false;
 
-        function setWindDegFromEvent(ev) {
-            const rect = compassSvg.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            let deg = Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI;
-            if (deg < 0) deg += 360;
-            windDeg = deg;
-            windDirInput.value = Math.round(windDeg);
-            updateWindUI();
-            renderHeatmapLayers(1);
-        }
-
-        if (compassSvg) {
-            compassSvg.style.cursor = 'pointer';
-            compassSvg.addEventListener('mousedown', (e) => { isDraggingCompass = true; setWindDegFromEvent(e); });
-            window.addEventListener('mousemove', (e) => { if (isDraggingCompass) setWindDegFromEvent(e); });
-            window.addEventListener('mouseup', () => { isDraggingCompass = false; });
-            compassSvg.addEventListener('touchstart', (e) => { e.preventDefault(); isDraggingCompass = true; setWindDegFromEvent(e.touches[0]); }, {passive:false});
-            window.addEventListener('touchmove', (e) => { if (isDraggingCompass) setWindDegFromEvent(e.touches[0]); }, {passive:false});
-            window.addEventListener('touchend', () => { isDraggingCompass = false; });
-        }
+        // Compass interactivity disabled - wind now changes automatically through time
 
         // Particle Canvas Setup
         const canvas = document.getElementById('map-overlay');
@@ -303,6 +285,9 @@
             const dt = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
 
+            // Update wind automatically
+            updateWindAutomatically(dt);
+
             emitFromSources(dt);
 
             for (let i = particles.length - 1; i >= 0; i--) {
@@ -324,6 +309,11 @@
                 ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
                 ctx.fill();
             });
+
+            // Update heatmap every 0.2 seconds
+            if (Math.floor(simulationTime * 5) % 1 === 0) {
+                renderHeatmapLayers(1);
+            }
 
             requestAnimationFrame(updateAndDraw);
         }
