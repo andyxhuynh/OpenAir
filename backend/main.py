@@ -15,16 +15,12 @@ from sqlalchemy.orm import sessionmaker, Session
 # =====================================================================
 # DATABASE CONFIGURATION & CONNECTIVITY
 # =====================================================================
-# For local prototyping, we use an in-memory SQLite URL so the code runs out-of-the-box.
-# Switch this line to connect to your live PostgreSQL container or hosting instance:
-# DATABASE_URL = "postgresql://username:password@localhost:5432/openair_db"
 DATABASE_URL = "sqlite:///./openair.db"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Dependency worker to safely yield and close database session pipes per API request
 def get_db():
     db = SessionLocal()
     try:
@@ -41,7 +37,7 @@ class AreaOfInterestTable(Base):
     id = Column(String(50), primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     layer_type = Column(String(30), default="street_block")
-    coordinates = Column(JSON, nullable=False)  # Stores the GeoJSON Polygon arrays
+    coordinates = Column(JSON, nullable=False)  
 
 class PollutionSensorTable(Base):
     __tablename__ = "pollution_sensors"
@@ -49,11 +45,10 @@ class PollutionSensorTable(Base):
     id = Column(String(50), primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     layer_type = Column(String(30), default="emission_source")
-    emblem_type = Column(String(30), nullable=False)  # 'factory' or 'power_plant'
+    emblem_type = Column(String(30), nullable=False)  
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
 
-# Compile structural tables on machine memory if they do not exist
 Base.metadata.create_all(bind=engine)
 
 # =====================================================================
@@ -62,7 +57,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="OpenAir Lyon Predictive Pollution Backend",
     description="Microscale atmospheric engine fueled by structured relational table lookups.",
-    version="1.2.0"
+    version="1.3.0"
 )
 
 app.add_middleware(
@@ -75,7 +70,7 @@ app.add_middleware(
 
 LYON_CENTER_LAT = 45.76
 LYON_CENTER_LNG = 4.87
-GRID_SIZE = 50  
+GRID_SIZE = 50  # Keep our internal core 50x50 numpy computational matrix
 
 POLLUTANT_THRESHOLDS = {
     "pm25": {"standard": [10, 20, 25], "sensitive": [8, 15, 20]},   
@@ -103,36 +98,45 @@ def seed_database_placeholders():
     db = SessionLocal()
     if db.query(AreaOfInterestTable).first() is not None:
         db.close()
-        return  # Data is already seeded
+        return  
 
     print("[DATABASE SEED ENGINE] Injecting core placeholder assets into database tables...")
     
     # 1. Seed Stationary Point Emitters
     emitters = [
-        PollutionSensorTable(id="source_factory_01", name="Vallée de la Chimie Industrial Complex", emblem_type="factory", latitude=45.76, longitude=4.878),
-        PollutionSensorTable(id="source_power_02", name="Villeurbanne District Thermal Power Plant", emblem_type="power_plant", latitude=45.805, longitude=4.942)
+        PollutionSensorTable(id="source_factory_01", name="Vallée de la Chimie Industrial Complex", emblem_type="factory", latitude=45.751, longitude=4.8544),
+        PollutionSensorTable(id="source_power_02", name="Villeurbanne District Thermal Power Plant", emblem_type="power_plant", latitude=45.7645, longitude=4.8836)
     ]
     db.add_all(emitters)
 
-    # 2. Seed 400 Micro-Grid Neighborhood Area Polygons
+    # 2. FIXED: Map 100-meter steps cleanly to cover our GRID_SIZE area
+    LAT_STEP = 0.0009   # ~100 meters North-South
+    LNG_STEP = 0.0012   # ~100 meters East-West (Adjusted for contraction at Lyon's latitude)
+    
+    # Offset center so that the layout wraps completely around Lyon Center
+    start_lat = LYON_CENTER_LAT - (GRID_SIZE / 2) * LAT_STEP
+    start_lng = LYON_CENTER_LNG - (GRID_SIZE / 2) * LNG_STEP
+
     block_id_counter = 0
-    for i in range(-10, 10):
-        for j in range(-10, 10):
-            lat_offset = i * 0.003  
-            lng_offset = j * 0.004
-            block_lat = LYON_CENTER_LAT + lat_offset
-            block_lng = LYON_CENTER_LNG + lng_offset
+    for i in range(GRID_SIZE):
+        for j in range(GRID_SIZE):
+            block_lat = start_lat + (i * LAT_STEP)
+            block_lng = start_lng + (j * LNG_STEP)
             
-            w = 0.0015
+            # Construct a tight 100m bounding box geometry layout
+            w_lat = LAT_STEP / 2
+            w_lng = LNG_STEP / 2
+            
             polygon_coordinates = [[
-                [block_lng - w, block_lat - w],
-                [block_lng + w, block_lat - w],
-                [block_lng + w, block_lat + w],
-                [block_lng - w, block_lat + w],
-                [block_lng - w, block_lat - w]
+                [block_lng - w_lng, block_lat - w_lat],
+                [block_lng + w_lng, block_lat - w_lat],
+                [block_lng + w_lng, block_lat + w_lat],
+                [block_lng - w_lng, block_lat + w_lat],
+                [block_lng - w_lng, block_lat - w_lat]
             ]]
             
-            name = f"Villeurbanne Block #{block_id_counter}" if j > -2 else f"Lyon District Block #{block_id_counter}"
+            name = f"Villeurbanne Block #{block_id_counter}" if j > (GRID_SIZE / 2) else f"Lyon District Block #{block_id_counter}"
+            
             block_record = AreaOfInterestTable(
                 id=f"block_{block_id_counter}",
                 name=name,
@@ -144,7 +148,7 @@ def seed_database_placeholders():
             
     db.commit()
     db.close()
-    print("[DATABASE SEED ENGINE] Complete. Tables populated.")
+    print(f"[DATABASE SEED ENGINE] Complete. {block_id_counter} 100m grid entries populated.")
 
 seed_database_placeholders()
 
@@ -162,7 +166,7 @@ class EnvironmentalEngine:
         for pollutant in POLLUTANT_THRESHOLDS.keys():
             grid = np.zeros((GRID_SIZE, GRID_SIZE))
             
-            # Hardcoded plume intersections calculated over coordinate matrix cells
+            # Map plume vectors onto indices matching the database seed footprint coordinates
             grid[10, 12] = 85.0 if pollutant in ["no2", "so2", "pm25"] else 5.0
             grid[25, 28] = 95.0 if pollutant in ["pm10", "pb", "co"] else 12.0
             grid += np.random.uniform(1.0, 5.0, (GRID_SIZE, GRID_SIZE))
@@ -213,14 +217,8 @@ class EnvironmentalEngine:
 # =====================================================================
 # REST ENDPOINTS FOR THE MOBILE FRONTEND
 # =====================================================================
-
-### TASK 2 NEW ENDPOINT: Query Core Structural Area Entities from Relational Database
 @app.get("/api/areas")
 def get_all_database_areas(db: Session = Depends(get_db)):
-    """
-    REST Route retrieving foundational area geometry straight out of the 
-    underlying PostgreSQL data storage system.
-    """
     records = db.query(AreaOfInterestTable).all()
     return {
         "status": "success",
@@ -237,25 +235,20 @@ def get_all_database_areas(db: Session = Depends(get_db)):
 
 @app.get("/api/map/initial-blocks")
 def get_initial_blocks_map(user_id: Optional[str] = "default", db: Session = Depends(get_db)):
-    """
-    Calculates live atmospheric data overlay models across structural 
-    assets pulled directly from the underlying relational storage tables.
-    """
     user_profile = mock_users_db.get(user_id, UserProfile(user_id="default", name="Guest User", mode="standard"))
     model_output = EnvironmentalEngine.run_advection_diffusion_model()
     
     geojson_features = []
     active_alerts_count = 0
     
-    # Query structural spatial parameters straight out of database tables
     db_blocks = db.query(AreaOfInterestTable).all()
     db_sensors = db.query(PollutionSensorTable).all()
     
-    # Process Street Block Polygons
+    # Process Street Block Polygons matching structured array matrix elements
     for index, block in enumerate(db_blocks):
-        # Derive structural coordinate math from array offsets
-        gx = int((index % 20) * (GRID_SIZE / 20))
-        gy = int((index // 20) * (GRID_SIZE / 20))
+        # FIXED: Directly maps block row sequences to exact positions on our grid array
+        gx = index % GRID_SIZE
+        gy = index // GRID_SIZE
         
         current_metrics = {}
         forecast_timeline = []
@@ -263,7 +256,7 @@ def get_initial_blocks_map(user_id: Optional[str] = "default", db: Session = Dep
         for hour in [0, 1, 2, 3]:
             hour_metrics = {}
             for p in POLLUTANT_THRESHOLDS.keys():
-                val = float(model_output[p][hour][max(0, min(gy, GRID_SIZE-1)), max(0, min(gx, GRID_SIZE-1))])
+                val = float(model_output[p][hour][gy, gx])
                 hour_metrics[p] = round(val, 2)
             
             color_at_hour = EnvironmentalEngine.calculate_color_status(hour_metrics, user_profile.mode)
@@ -305,7 +298,7 @@ def get_initial_blocks_map(user_id: Optional[str] = "default", db: Session = Dep
                 "source_id": source.id,
                 "source_name": source.name,
                 "emblem_type": source.emblem_type,
-                "core_pollutants": {"pm25": 42.1, "no2": 31.5} # Raw output snapshot placeholders
+                "core_pollutants": {"pm25": 42.1, "no2": 31.5} 
             },
             "geometry": {
                 "type": "Point",
