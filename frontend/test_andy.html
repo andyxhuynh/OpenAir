@@ -33,6 +33,21 @@
             pointer-events: none; /* let map interactions through */
             z-index: 2;
         }
+        /* Tooltip style for custom AOI icons */
+        .factory-tooltip {
+            background: rgba(22, 163, 74, 0.9);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.6);
+            border-radius: 0.4rem;
+            padding: 0.15rem 0.35rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            box-shadow: 0 1px 8px rgba(0,0,0,0.2);
+        }
+        .factory-tooltip::after {
+            border-top-color: rgba(22, 163, 74, 0.9);
+        }
+
         /* Elder mode styles for Bernard: High contrast and accessible text scaling */
         .elder-mode {
             font-size: 1.35rem;
@@ -140,6 +155,7 @@
         let isElderMode = false;
         let heatmapLayer = null;
         let factoryMarker = null; // Track marker reference for easy cleanups
+        let factoryCircle = null;
 
         // Initialize Map centered near Lyon/Villeurbanne center area
         const centralLat = 45.7685;
@@ -156,6 +172,17 @@
         map.createPane('iconOverlayPane');
         map.getPane('iconOverlayPane').style.zIndex = 650; // Above tile layers, heatmaps, and canvas overlays
         map.getPane('iconOverlayPane').style.pointerEvents = 'none'; // Keeps map drag/click interactions crisp
+
+        // Reusable custom factory icon for area markers.
+        // Replace iconUrl with your actual PNG path if available.
+        function createFactoryIcon(size = [42, 42]) {
+            return L.icon({
+                iconUrl: 'pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg',
+                iconSize: size,
+                iconAnchor: [size[0] / 2, size[1]],
+                popupAnchor: [0, -size[1] / 2]
+            });
+        }
 
         // Industrial corridor emitting dynamic point plumes
         const emissionSources = [
@@ -191,6 +218,9 @@
             if (factoryMarker) {
                 map.removeLayer(factoryMarker);
             }
+            if (factoryCircle) {
+                map.removeLayer(factoryCircle);
+            }
 
             const heatPoints = [];
 
@@ -218,16 +248,23 @@
                 heatPoints.push([source.lat + driftLat * 1.5, source.lng + driftLng * 1.5, 0.35]);
 
                 // C. ADD THE CUSTOM FACTORY ICON OVER THE CENTER
-                // Points explicitly to your exact filename string below
-                const adjustedIcon = L.icon({
-                    iconUrl: 'pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg',
-                    iconSize: isElderMode ? [60, 60] : [42, 42],
-                    iconAnchor: isElderMode ? [30, 30] : [21, 21]
-                });
+                factoryMarker = L.marker([source.lat, source.lng], {
+                    icon: createFactoryIcon(isElderMode ? [60, 60] : [42, 42])
+                }).addTo(map);
+                factoryMarker.bindTooltip(source.name, {
+                    permanent: true,
+                    direction: 'top',
+                    offset: [0, -10],
+                    className: 'factory-tooltip'
+                }).openTooltip();
 
-                factoryMarker = L.marker([source.lat, source.lng], { 
-                    icon: adjustedIcon,
-                    pane: 'iconOverlayPane' // Bind it to our custom elevated stack layout pane
+                // Fallback visual so the AOI is always visible even if the icon file fails
+                factoryCircle = L.circleMarker([source.lat, source.lng], {
+                    radius: isElderMode ? 12 : 8,
+                    color: '#dc2626',
+                    fillColor: '#fca5a5',
+                    fillOpacity: 0.45,
+                    weight: 2
                 }).addTo(map);
             });
 
