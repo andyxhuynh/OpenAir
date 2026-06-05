@@ -1,0 +1,54 @@
+{
+  "wind": {
+    "speed": 3.8,
+    "direction": 210,
+    "description": "Southwest breeze"
+  },
+  "sources": [
+    {
+      "id": "source_factory_01",
+      "name": "Vallée de la Chimie Industrial Complex",
+      "emblem_type": "factory",
+      "latitude": 45.76,
+      "longitude": 4.878,
+      "core_pollutants": {
+        "pm25": 42.1,
+        "no2": 31.5,
+        "so2": 18.4,
+        "co": 5.3
+      },
+      "risk_level": "high"
+    },
+    {
+      "id": "source_power_02",
+      "name": "Villeurbanne District Thermal Power Plant",
+      "emblem_type": "power_plant",
+      "latitude": 45.805,
+      "longitude": 4.942,
+      "core_pollutants": {
+        "pm25": 29.7,
+        "no2": 27.2,
+        "co": 3.1
+      },
+      "risk_level": "moderate"
+    }
+  ],
+  "zone_pollution": [
+    {
+      "zone_id": "villeurbanne_center",
+      "name": "Villeurbanne Center",
+      "pm25": 36.2,
+      "no2": 41.8,
+      "aqi": "Unhealthy",
+      "advice": "Avoid outdoor exercise."
+    },
+    {
+      "zone_id": "lyon_north",
+      "name": "Lyon North",
+      "pm25": 18.5,
+      "no2": 28.4,
+      "aqi": "Moderate",
+      "advice": "Sensitive groups should take caution."
+    }
+  ]
+}
