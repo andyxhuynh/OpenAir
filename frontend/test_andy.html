@@ -95,19 +95,40 @@
                 </div>
             </div>
 
-            <div id="technical-panel" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <h2 class="text-sm font-semibold tracking-wider text-gray-400 uppercase mb-3">Sensor Analytics (Advanced View)</h2>
-                <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Gauge Pressure:</span>
-                        <span class="font-mono font-medium">101,325 Pa</span>
-                    </div>
-                    <div class="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                        <div class="bg-red-500 h-full w-4/5"></div>
-                    </div>
-                    <p class="text-xs text-gray-500 italic mt-1">Raw engineering metrics processed via backend REST data stream.</p>
-                </div>
+            <div id="activity-panel" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+    <h2 class="text-sm font-semibold tracking-wider text-gray-400 uppercase mb-4">Outdoor Activity Guide</h2>
+    
+    <div class="space-y-4">
+        <!-- Activity: Children -->
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <span class="text-xl">🏃‍♂️</span>
+                <span class="text-sm font-medium text-gray-700">Children's Play</span>
             </div>
+            <span class="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded border border-red-200">Avoid</span>
+        </div>
+
+        <!-- Activity: Exercise -->
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <span class="text-xl">🚴‍♀️</span>
+                <span class="text-sm font-medium text-gray-700">Outdoor Exercise</span>
+            </div>
+            <span class="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded border border-red-200">Avoid</span>
+        </div>
+
+        <!-- Activity: Ventilation -->
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <span class="text-xl">🪟</span>
+                <span class="text-sm font-medium text-gray-700">Open Windows</span>
+            </div>
+            <span class="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-bold rounded border border-yellow-200">Caution</span>
+        </div>
+    </div>
+    
+    <p class="text-xs text-gray-500 italic mt-4">Recommendations based on hyper-local PM2.5 and NO2 dispersion.</p>
+</div>
         </div>
 
         <div class="lg:col-span-2 bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4">
@@ -407,7 +428,6 @@
         // Accessibility Toggles
         const modeToggleBtn = document.getElementById('mode-toggle');
         const bodyElement = document.body;
-        const technicalPanel = document.getElementById('technical-panel');
         const statusSummary = document.getElementById('status-summary');
 
         modeToggleBtn.addEventListener('click', () => {
@@ -416,7 +436,6 @@
                 bodyElement.classList.add('elder-mode');
                 modeToggleBtn.innerHTML = "🧒 Switch to Standard Mode";
                 modeToggleBtn.classList.replace('bg-blue-600', 'bg-gray-700');
-                technicalPanel.classList.add('hidden');
                 statusSummary.innerHTML = `
                     <p class="font-bold text-red-700 text-lg">⚠️ AIR IS POOR TODAY</p>
                     <p class="text-md text-gray-900 leading-relaxed font-medium">
@@ -428,7 +447,6 @@
                 bodyElement.classList.remove('elder-mode');
                 modeToggleBtn.innerHTML = "👴 Switch to Elder Mode";
                 modeToggleBtn.classList.replace('bg-gray-700', 'bg-blue-600');
-                technicalPanel.classList.remove('hidden');
                 statusSummary.innerHTML = `
                     <p class="text-sm text-gray-600 leading-relaxed">
                         Showing hyper-local real-time environmental metrics compiled from weather stations and local factory monitoring sensors.
