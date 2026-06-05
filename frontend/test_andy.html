@@ -208,26 +208,41 @@
             if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windDeg})`);
         }
 
+        function normalizeAngle(angle) {
+            return ((angle % 360) + 360) % 360;
+        }
+
+        function shortestAngleDelta(from, to) {
+            const diff = normalizeAngle(to - from);
+            return diff > 180 ? diff - 360 : diff;
+        }
+
         function updateWindAutomatically(deltaTime) {
             simulationTime += deltaTime;
             
             // Wind speed oscillates between 0.5 and 6 m/s with a period of 20 seconds
             windSpeed = 3.25 + 2.75 * Math.sin(simulationTime * Math.PI / 20);
             
-            // Wind direction changes with random walk pattern
-            // Perlin-like noise using sine waves at different frequencies
-            const noise1 = Math.sin((simulationTime + windNoiseOffset) * 0.3) * 30;
-            const noise2 = Math.sin((simulationTime + windNoiseOffset) * 0.1) * 50;
-            const noise3 = Math.sin((simulationTime + windNoiseOffset) * 0.05) * 80;
-            
-            windDeg = (180 + noise1 + noise2 + noise3) % 360;
-            if (windDeg < 0) windDeg += 360;
+            // Wind direction changes more slowly now using low-frequency noise
+            const noise1 = Math.sin((simulationTime + windNoiseOffset) * 0.12) * 20;
+            const noise2 = Math.sin((simulationTime + windNoiseOffset) * 0.04) * 30;
+            const noise3 = Math.sin((simulationTime + windNoiseOffset) * 0.015) * 40;
+            const targetWindDeg = normalizeAngle(180 + noise1 + noise2 + noise3);
+
+            const maxStep = 30 * deltaTime; // limit degrees changed per second
+            const deltaDeg = shortestAngleDelta(windDeg, targetWindDeg);
+            windDeg = normalizeAngle(windDeg + Math.max(-maxStep, Math.min(maxStep, deltaDeg)));
             
             updateWindUI();
         }
 
         // 3. REGIONAL HEATMAP GENERATION WITH AMBIENT GREEN MATRIX
-        function renderHeatmapLayers(sizeMultiplier = 1) {
+        function getHeatmapScaleFromZoom() {
+            const zoom = map.getZoom();
+            return 1 + Math.max(0, zoom - 13) * 0.16;
+        }
+
+        function renderHeatmapLayers(sizeMultiplier = getHeatmapScaleFromZoom()) {
             if (heatmapLayer) {
                 map.removeLayer(heatmapLayer);
             }
@@ -270,7 +285,7 @@
                 factoryMarker.bindTooltip(source.name, {
                     permanent: true,
                     direction: 'top',
-                    offset: [0, -10],
+                    offset: [0, 0],
                     className: 'factory-tooltip'
                 }).openTooltip();
 
@@ -320,7 +335,8 @@
             canvas.style.height = rect.height + 'px';
         }
 
-        map.on('move resize zoom', () => { particles = []; resizeCanvas(); });
+        map.on('move resize', () => { particles = []; resizeCanvas(); });
+        map.on('zoomend', () => renderHeatmapLayers());
         resizeCanvas();
 
         function emitFromSources(dt) {
@@ -367,9 +383,11 @@
                 ctx.fill();
             });
 
-            // Update heatmap every 0.2 seconds
-            if (Math.floor(simulationTime * 5) % 1 === 0) {
-                renderHeatmapLayers(1);
+            // Update heatmap every 0.2 seconds; only when a new interval boundary is reached.
+            const lastTick = Math.floor((simulationTime - dt) * 5);
+            const currentTick = Math.floor(simulationTime * 5);
+            if (currentTick !== lastTick) {
+                renderHeatmapLayers();
             }
 
             requestAnimationFrame(updateAndDraw);
