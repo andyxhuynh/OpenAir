@@ -150,7 +150,7 @@
                                 <circle cx="0" cy="0" r="2" fill="#111827"/>
                             </g>
                         </svg>
-                        <div class="text-xs text-gray-500 mt-1">Wind Dir: <span id="wind-deg">225</span>°</div>
+                        <div class="text-xs text-gray-500 mt-1">Wind Dir (from): <span id="wind-deg">225</span>°</div>
                     </div>
 
                     <div class="flex flex-col items-start text-xs">
@@ -226,7 +226,8 @@
         function updateWindUI() {
             windDegLabel.textContent = Math.round(windDeg);
             windSpeedLabel.textContent = windSpeed.toFixed(1);
-            if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windDeg})`);
+            const windFlowDeg = normalizeAngle(windDeg + 180);
+            if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windFlowDeg})`);
         }
 
         function normalizeAngle(angle) {
@@ -296,9 +297,10 @@
             }
 
             // B. COMPUTE ADVECTION SMOKE PLUMES
-            const rad = windDeg * Math.PI / 180;
-            const driftLat = Math.cos(rad) * windSpeed * 0.0018;
-            const driftLng = Math.sin(rad) * windSpeed * 0.0018;
+            // windDeg is the meteorological source direction, so plume flow is toward the opposite heading.
+            const flowRad = normalizeAngle(windDeg + 180) * Math.PI / 180;
+            const driftLat = Math.cos(flowRad) * windSpeed * 0.0018;
+            const driftLng = Math.sin(flowRad) * windSpeed * 0.0018;
 
             emissionSources.forEach(source => {
                 heatPoints.push([source.lat, source.lng, 1.0]);
@@ -373,11 +375,11 @@
                 const rate = 50; 
                 const count = Math.floor(rate * dt);
                 const pt = map.latLngToContainerPoint([source.lat, source.lng]);
+                const flowRad = normalizeAngle(windDeg + 180) * Math.PI / 180;
                 for (let i = 0; i < count; i++) {
                     const life = 2.5 + Math.random() * 3.5;
-                    const rad = windDeg * Math.PI / 180;
-                    const vx = Math.sin(rad) * windSpeed * (22 + Math.random() * 8);
-                    const vy = -Math.cos(rad) * windSpeed * (22 + Math.random() * 8);
+                    const vx = Math.sin(flowRad) * windSpeed * (22 + Math.random() * 8);
+                    const vy = -Math.cos(flowRad) * windSpeed * (22 + Math.random() * 8);
                     particles.push({x: pt.x, y: pt.y, vx, vy, life, age: 0});
                 }
             });
