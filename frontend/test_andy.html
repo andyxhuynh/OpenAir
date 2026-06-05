@@ -268,8 +268,8 @@
 
             // B. COMPUTE ADVECTION SMOKE PLUMES
             const rad = windDeg * Math.PI / 180;
-            const driftLat = -Math.sin(rad) * windSpeed * 0.0018;
-            const driftLng = Math.cos(rad) * windSpeed * 0.0018;
+            const driftLat = Math.cos(rad) * windSpeed * 0.0018;
+            const driftLng = Math.sin(rad) * windSpeed * 0.0018;
 
             emissionSources.forEach(source => {
                 heatPoints.push([source.lat, source.lng, 1.0]);
@@ -347,8 +347,8 @@
                 for (let i = 0; i < count; i++) {
                     const life = 2.5 + Math.random() * 3.5;
                     const rad = windDeg * Math.PI / 180;
-                    const vx = Math.cos(rad) * windSpeed * (22 + Math.random() * 8);
-                    const vy = Math.sin(rad) * windSpeed * (22 + Math.random() * 8);
+                    const vx = Math.sin(rad) * windSpeed * (22 + Math.random() * 8);
+                    const vy = -Math.cos(rad) * windSpeed * (22 + Math.random() * 8);
                     particles.push({x: pt.x, y: pt.y, vx, vy, life, age: 0});
                 }
             });
