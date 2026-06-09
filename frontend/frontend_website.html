@@ -192,6 +192,83 @@
             if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windFlowDeg})`);
         }
 
+<<<<<<< HEAD:frontend/test_andy.html
+=======
+        function applyPollutionData(data) {
+            if (data.wind) {
+                windSpeed = data.wind.speed ?? windSpeed;
+                windDeg = data.wind.direction ?? windDeg;
+            }
+            if (Array.isArray(data.sources) && data.sources.length > 0) {
+                emissionSources = data.sources.map(source => ({
+                    name: source.name || 'Source',
+                    lat: source.latitude,
+                    lng: source.longitude,
+                    pollution: source.risk_level || 'moderate',
+                    emblem: source.emblem_type || 'factory'
+                }));
+            }
+            updateWindUI();
+            renderHeatmapLayers(1);
+            requestAnimationFrame(updateAndDraw);
+        }
+
+        async function loadPollutionData() {
+            try {
+                // Try to fetch from backend API first
+                const response = await fetch('http://localhost:8000/api/map/initial-blocks');
+                const geojsonData = await response.json();
+                
+                // Transform GeoJSON features into pollution data format
+                const sources = geojsonData.features
+                    .filter(f => f.properties.layer_type === 'emission_source')
+                    .map(f => ({
+                        name: f.properties.source_name,
+                        latitude: f.geometry.coordinates[1],
+                        longitude: f.geometry.coordinates[0],
+                        emblem_type: f.properties.emblem_type,
+                        risk_level: f.properties.core_pollutants.pm25 > 30 ? 'high' : 'moderate'
+                    }));
+                
+                const pollutionData = {
+                    wind: { speed: 2.0, direction: 225 },
+                    sources: sources.length > 0 ? sources : [
+                        {
+                            name: "Vallée de la Chimie Industrial Complex",
+                            latitude: 45.76,
+                            longitude: 4.878,
+                            emblem_type: "factory",
+                            risk_level: "high"
+                        }
+                    ]
+                };
+                
+                applyPollutionData(pollutionData);
+            } catch (error) {
+                console.warn('Backend unavailable, falling back to local JSON file:', error);
+                try {
+                    // Fallback to local JSON file
+                    const response = await fetch(pollutionDataUrl);
+                    const data = await response.json();
+                    applyPollutionData(data);
+                } catch (fallbackError) {
+                    console.warn('Unable to load pollution data, using hardcoded defaults.', fallbackError);
+                    emissionSources = [
+                        {
+                            name: "Villeurbanne Industrial Corridor (Factory Alpha)",
+                            lat: 45.7830,
+                            lng: 4.8820,
+                            pollution: "high"
+                        }
+                    ];
+                    updateWindUI();
+                    renderHeatmapLayers(1);
+                    requestAnimationFrame(updateAndDraw);
+                }
+            }
+        }
+
+>>>>>>> 19773c8d7dae48a8e976a4e7042ef58f4c245b8d:frontend/frontend_website.html
         function normalizeAngle(angle) {
             return ((angle % 360) + 360) % 360;
         }
