@@ -1,5 +1,6 @@
 import math
 import random
+import requests
 from typing import List, Dict, Optional
 import numpy as np
 from scipy.ndimage import shift, gaussian_filter
@@ -7,24 +8,19 @@ from fastapi import FastAPI, Query, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Database ORM Imports
 from sqlalchemy import create_engine, Column, String, Float, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
 # =====================================================================
-# DATABASE CONFIGURATION & CONNECTIVITY
+# DATABASE CONFIGURATION
 # =====================================================================
-# For local prototyping, we use an in-memory SQLite URL so the code runs out-of-the-box.
-# Switch this line to connect to your live PostgreSQL container or hosting instance:
-# DATABASE_URL = "postgresql://username:password@localhost:5432/openair_db"
 DATABASE_URL = "sqlite:///./openair.db"
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Dependency worker to safely yield and close database session pipes per API request
 def get_db():
     db = SessionLocal()
     try:
@@ -32,38 +28,28 @@ def get_db():
     finally:
         db.close()
 
-# =====================================================================
-# POSTGRESQL CORE OBJECT MAPPINGS (TABLES)
-# =====================================================================
 class AreaOfInterestTable(Base):
     __tablename__ = "areas_of_interest"
-    
     id = Column(String(50), primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     layer_type = Column(String(30), default="street_block")
-    coordinates = Column(JSON, nullable=False)  # Stores the GeoJSON Polygon arrays
+    coordinates = Column(JSON, nullable=False)
 
 class PollutionSensorTable(Base):
     __tablename__ = "pollution_sensors"
-    
     id = Column(String(50), primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     layer_type = Column(String(30), default="emission_source")
-    emblem_type = Column(String(30), nullable=False)  # 'factory' or 'power_plant'
+    emblem_type = Column(String(30), nullable=False) 
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
 
-# Compile structural tables on machine memory if they do not exist
 Base.metadata.create_all(bind=engine)
 
 # =====================================================================
-# APPLICATION CONFIGURATION & STATE INITIALIZATION
+# APPLICATION INITIALIZATION
 # =====================================================================
-app = FastAPI(
-    title="OpenAir Lyon Predictive Pollution Backend",
-    description="Microscale atmospheric engine fueled by structured relational table lookups.",
-    version="1.2.0"
-)
+app = FastAPI(title="OpenAir Lyon Predictive Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -91,96 +77,107 @@ class UserProfile(BaseModel):
     user_id: str
     name: str
     mode: str  
-    device_token: Optional[str] = None
 
 mock_users_db: Dict[str, UserProfile] = {
-    "elena_123": UserProfile(user_id="elena_123", name="Elena Rostova", mode="young", device_token="apns_token_elena"),
-    "bernard_789": UserProfile(user_id="bernard_789", name="Bernard Dupont", mode="elder", device_token="apns_token_bernard")
+    "elena_123": UserProfile(user_id="elena_123", name="Elena Rostova", mode="young"),
+    "bernard_789": UserProfile(user_id="bernard_789", name="Bernard Dupont", mode="elder")
 }
 
 def seed_database_placeholders():
-    """Validates repository data; registers initial Lyon blocks & point emitters if tables are blank."""
     db = SessionLocal()
-    try:
-        existing_area = db.query(AreaOfInterestTable).first()
-        new_data_added = False
-
-        if existing_area is None:
-            print("[DATABASE SEED ENGINE] Injecting core placeholder assets into database tables...")
-
-            # 1. Seed 400 Micro-Grid Neighborhood Area Polygons
-            block_id_counter = 0
-            for i in range(-10, 10):
-                for j in range(-10, 10):
-                    lat_offset = i * 0.003  
-                    lng_offset = j * 0.004
-                    block_lat = LYON_CENTER_LAT + lat_offset
-                    block_lng = LYON_CENTER_LNG + lng_offset
-                    
-                    w = 0.0015
-                    polygon_coordinates = [[
-                        [block_lng - w, block_lat - w],
-                        [block_lng + w, block_lat - w],
-                        [block_lng + w, block_lat + w],
-                        [block_lng - w, block_lat + w],
-                        [block_lng - w, block_lat - w]
-                    ]]
-                    
-                    name = f"Villeurbanne Block #{block_id_counter}" if j > -2 else f"Lyon District Block #{block_id_counter}"
-                    block_record = AreaOfInterestTable(
-                        id=f"block_{block_id_counter}",
-                        name=name,
-                        layer_type="street_block",
-                        coordinates=polygon_coordinates
-                    )
-                    db.add(block_record)
-                    block_id_counter += 1
-            new_data_added = True
-
-        # 2. Seed Stationary Point Emitters and preserve any new ones
-        emitters = [
-            PollutionSensorTable(id="source_factory_01", name="Vallée de la Chimie Industrial Complex", emblem_type="factory", latitude=45.76, longitude=4.878),
-            PollutionSensorTable(id="source_power_02", name="Villeurbanne District Thermal Power Plant", emblem_type="power_plant", latitude=45.805, longitude=4.942),
-            PollutionSensorTable(id="source_plant_03", name="Bron Industrial Emission Hub", emblem_type="factory", latitude=45.73, longitude=4.94),
-            PollutionSensorTable(id="source_factory_04", name="Saint-Priest Logistics Plant", emblem_type="factory", latitude=45.71, longitude=4.95),
-            PollutionSensorTable(id="source_plant_05", name="Meyzieu Waste Incineration Center", emblem_type="factory", latitude=45.78, longitude=4.99)
-        ]
-
-        for emitter in emitters:
-            if db.query(PollutionSensorTable).filter_by(id=emitter.id).first() is None:
-                db.add(emitter)
-                new_data_added = True
-
-        if new_data_added:
-            db.commit()
-            print("[DATABASE SEED ENGINE] Complete. Tables populated.")
-        else:
-            print("[DATABASE SEED ENGINE] No new placeholder data required.")
-    finally:
+    if db.query(AreaOfInterestTable).first() is not None:
         db.close()
+        return
+
+    emitters = [
+        PollutionSensorTable(id="source_factory_01", name="Vallée de la Chimie Industrial Complex", emblem_type="factory", latitude=45.76, longitude=4.878),
+        PollutionSensorTable(id="source_power_02", name="Villeurbanne District Thermal Power Plant", emblem_type="power_plant", latitude=45.805, longitude=4.942)
+    ]
+    db.add_all(emitters)
+
+    block_id_counter = 0
+    for i in range(-10, 10):
+        for j in range(-10, 10):
+            lat_offset = i * 0.003  
+            lng_offset = j * 0.004
+            block_lat = LYON_CENTER_LAT + lat_offset
+            block_lng = LYON_CENTER_LNG + lng_offset
+            
+            w = 0.0015
+            polygon_coordinates = [[
+                [block_lng - w, block_lat - w], [block_lng + w, block_lat - w],
+                [block_lng + w, block_lat + w], [block_lng - w, block_lat + w],
+                [block_lng - w, block_lat - w]
+            ]]
+            
+            block_record = AreaOfInterestTable(
+                id=f"block_{block_id_counter}",
+                name=f"District Block #{block_id_counter}",
+                layer_type="street_block",
+                coordinates=polygon_coordinates
+            )
+            db.add(block_record)
+            block_id_counter += 1
+            
+    db.commit()
+    db.close()
 
 seed_database_placeholders()
 
 # =====================================================================
-# ALGOLIRITHMIC DISPERSION COMPUTATION ENGINE
+# ENVIRONMENTAL ENGINE (DUAL API INTEGRATION)
 # =====================================================================
 class EnvironmentalEngine:
-    @staticmethod
-    def get_current_wind_vector():
-        return {"speed": 12.5, "direction": 210}  
+    _live_data = None
 
-    @staticmethod
-    def simulate_sensor_grids() -> Dict[str, np.ndarray]:
+    @classmethod
+    def fetch_live_data(cls):
+        if cls._live_data: return cls._live_data 
+            
+        try:
+            # 1. Fetch Wind Data (Open-Meteo)
+            w_url = "https://api.open-meteo.com/v1/forecast?latitude=45.76&longitude=4.87&current=wind_speed_10m,wind_direction_10m"
+            weather = requests.get(w_url).json()["current"]
+            
+            # 2. Fetch Air Quality Data (WAQI)
+            waqi_token = "cbb3446a161ed28ded4f11d5dc8b29bd2aa68713" # <--- PASTE YOUR TOKEN HERE
+            a_url = f"https://api.waqi.info/feed/geo:45.76;4.87/?token={waqi_token}"
+            waqi_response = requests.get(a_url).json()
+            iaqi = waqi_response.get("data", {}).get("iaqi", {})
+
+            cls._live_data = {
+                "speed": weather["wind_speed_10m"] * 0.27778, 
+                "direction": weather["wind_direction_10m"],
+                "pm25": iaqi.get("pm25", {}).get("v", 12.0),
+                "pm10": iaqi.get("pm10", {}).get("v", 20.0),
+                "no2": iaqi.get("no2", {}).get("v", 15.0),
+                "o3": iaqi.get("o3", {}).get("v", 40.0)
+            }
+            return cls._live_data
+        except Exception as e:
+            return {"speed": 2.5, "direction": 210, "pm25": 12.0, "pm10": 20.0, "no2": 15.0, "o3": 40.0}
+
+    @classmethod
+    def get_current_wind_vector(cls):
+        data = cls.fetch_live_data()
+        return {"speed": data["speed"], "direction": data["direction"]}
+
+    @classmethod
+    def simulate_sensor_grids(cls) -> Dict[str, np.ndarray]:
+        live_data = cls.fetch_live_data()
         grids = {}
+        
         for pollutant in POLLUTANT_THRESHOLDS.keys():
-            grid = np.zeros((GRID_SIZE, GRID_SIZE))
+            bg_level = live_data.get(pollutant, 5.0) 
+            # Cast grid to float to prevent integer/float sum crashes
+            grid = np.full((GRID_SIZE, GRID_SIZE), bg_level, dtype=float)
             
-            # Hardcoded plume intersections calculated over coordinate matrix cells
-            grid[10, 12] = 85.0 if pollutant in ["no2", "so2", "pm25"] else 5.0
-            grid[25, 28] = 95.0 if pollutant in ["pm10", "pb", "co"] else 12.0
-            grid += np.random.uniform(1.0, 5.0, (GRID_SIZE, GRID_SIZE))
-            
+            grid[10, 12] = 85.0 if pollutant in ["no2", "so2", "pm25"] else bg_level + 5.0
+            grid[25, 28] = 95.0 if pollutant in ["pm10", "pb", "co"] else bg_level + 12.0
+            grid += np.random.uniform(-1.0, 1.0, (GRID_SIZE, GRID_SIZE))
             grids[pollutant] = grid
+            
+        cls._live_data = None 
         return grids
 
     @classmethod
@@ -210,126 +207,65 @@ class EnvironmentalEngine:
     def calculate_color_status(pollutant_values: Dict[str, float], mode: str) -> str:
         highest_severity = 0  
         tier = "sensitive" if mode in ["young", "elder"] else "standard"
-        
         for pollutant, val in pollutant_values.items():
             limits = POLLUTANT_THRESHOLDS[pollutant][tier]
             if val <= limits[0]: severity = 0 
             elif val <= limits[2]: severity = 1 
             else: severity = 2 
-                
             if severity > highest_severity: highest_severity = severity
-                
         if highest_severity == 0: return "Green"
         if highest_severity == 1: return "Yellow"
         return "Red"
 
 # =====================================================================
-# REST ENDPOINTS FOR THE MOBILE FRONTEND
+# REST ENDPOINTS
 # =====================================================================
-
-### TASK 2 NEW ENDPOINT: Query Core Structural Area Entities from Relational Database
-@app.get("/api/areas")
-def get_all_database_areas(db: Session = Depends(get_db)):
-    """
-    REST Route retrieving foundational area geometry straight out of the 
-    underlying PostgreSQL data storage system.
-    """
-    records = db.query(AreaOfInterestTable).all()
-    return {
-        "status": "success",
-        "total_records": len(records),
-        "data": [
-            {
-                "area_id": r.id,
-                "name": r.name,
-                "layer_type": r.layer_type,
-                "geometry_coordinates": r.coordinates
-            } for r in records
-        ]
-    }
-
 @app.get("/api/map/initial-blocks")
 def get_initial_blocks_map(user_id: Optional[str] = "default", db: Session = Depends(get_db)):
-    """
-    Calculates live atmospheric data overlay models across structural 
-    assets pulled directly from the underlying relational storage tables.
-    """
     user_profile = mock_users_db.get(user_id, UserProfile(user_id="default", name="Guest User", mode="standard"))
     model_output = EnvironmentalEngine.run_advection_diffusion_model()
     
     geojson_features = []
-    active_alerts_count = 0
-    
-    # Query structural spatial parameters straight out of database tables
     db_blocks = db.query(AreaOfInterestTable).all()
     db_sensors = db.query(PollutionSensorTable).all()
     
-    # Process Street Block Polygons
     for index, block in enumerate(db_blocks):
-        # Derive structural coordinate math from array offsets
         gx = int((index % 20) * (GRID_SIZE / 20))
         gy = int((index // 20) * (GRID_SIZE / 20))
-        
         current_metrics = {}
-        forecast_timeline = []
-        
-        for hour in [0, 1, 2, 3]:
-            hour_metrics = {}
-            for p in POLLUTANT_THRESHOLDS.keys():
-                val = float(model_output[p][hour][max(0, min(gy, GRID_SIZE-1)), max(0, min(gx, GRID_SIZE-1))])
-                hour_metrics[p] = round(val, 2)
-            
-            color_at_hour = EnvironmentalEngine.calculate_color_status(hour_metrics, user_profile.mode)
-            
-            if hour == 0:
-                current_metrics = hour_metrics
-                block_color = color_at_hour
-            else:
-                forecast_timeline.append({
-                    "time": f"T+{hour}",
-                    "dominant_color": color_at_hour,
-                    "metrics": hour_metrics
-                })
-        
-        if block_color == "Red": active_alerts_count += 1
+        for p in POLLUTANT_THRESHOLDS.keys():
+            val = float(model_output[p][0][max(0, min(gy, GRID_SIZE-1)), max(0, min(gx, GRID_SIZE-1))])
+            current_metrics[p] = round(val, 2)
             
         geojson_features.append({
             "type": "Feature",
             "properties": {
                 "layer_type": block.layer_type,
-                "block_id": block.id,
                 "block_name": block.name,
-                "color_code": block_color,  
                 "current_pollutants": current_metrics,
-                "forecast_timeline": forecast_timeline
             },
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": block.coordinates
-            }
+            "geometry": {"type": "Polygon", "coordinates": block.coordinates}
         })
         
-    # Process Point Emitters from DB Records
+    live_env_data = EnvironmentalEngine.fetch_live_data()
     for source in db_sensors:
+        # We simulate one factory spiking while the other reflects the real ambient WAQI reading
         geojson_features.append({
             "type": "Feature",
             "properties": {
                 "layer_type": source.layer_type,
-                "source_id": source.id,
                 "source_name": source.name,
-                "emblem_type": source.emblem_type,
-                "core_pollutants": {"pm25": 42.1, "no2": 31.5} # Raw output snapshot placeholders
+                "core_pollutants": {
+                    "pm25": 85.0 if "Vallée" in source.name else live_env_data.get("pm25", 12.0), 
+                    "no2": 62.0 if "Vallée" in source.name else live_env_data.get("no2", 15.0)
+                } 
             },
-            "geometry": {
-                "type": "Point",
-                "coordinates": [source.longitude, source.latitude]
-            }
+            "geometry": {"type": "Point", "coordinates": [source.longitude, source.latitude]}
         })
 
     return {
         "type": "FeatureCollection",
-        "wind": EnvironmentalEngine.get_current_wind_vector(),
-        "user_context": {"name": user_profile.name, "mode_applied": user_profile.mode},
+        "live_weather": EnvironmentalEngine.get_current_wind_vector(), 
         "features": geojson_features
     }
 
