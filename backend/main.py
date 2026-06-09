@@ -101,53 +101,63 @@ mock_users_db: Dict[str, UserProfile] = {
 def seed_database_placeholders():
     """Validates repository data; registers initial Lyon blocks & point emitters if tables are blank."""
     db = SessionLocal()
-    if db.query(AreaOfInterestTable).first() is not None:
+    try:
+        existing_area = db.query(AreaOfInterestTable).first()
+        new_data_added = False
+
+        if existing_area is None:
+            print("[DATABASE SEED ENGINE] Injecting core placeholder assets into database tables...")
+
+            # 1. Seed 400 Micro-Grid Neighborhood Area Polygons
+            block_id_counter = 0
+            for i in range(-10, 10):
+                for j in range(-10, 10):
+                    lat_offset = i * 0.003  
+                    lng_offset = j * 0.004
+                    block_lat = LYON_CENTER_LAT + lat_offset
+                    block_lng = LYON_CENTER_LNG + lng_offset
+                    
+                    w = 0.0015
+                    polygon_coordinates = [[
+                        [block_lng - w, block_lat - w],
+                        [block_lng + w, block_lat - w],
+                        [block_lng + w, block_lat + w],
+                        [block_lng - w, block_lat + w],
+                        [block_lng - w, block_lat - w]
+                    ]]
+                    
+                    name = f"Villeurbanne Block #{block_id_counter}" if j > -2 else f"Lyon District Block #{block_id_counter}"
+                    block_record = AreaOfInterestTable(
+                        id=f"block_{block_id_counter}",
+                        name=name,
+                        layer_type="street_block",
+                        coordinates=polygon_coordinates
+                    )
+                    db.add(block_record)
+                    block_id_counter += 1
+            new_data_added = True
+
+        # 2. Seed Stationary Point Emitters and preserve any new ones
+        emitters = [
+            PollutionSensorTable(id="source_factory_01", name="Vallée de la Chimie Industrial Complex", emblem_type="factory", latitude=45.76, longitude=4.878),
+            PollutionSensorTable(id="source_power_02", name="Villeurbanne District Thermal Power Plant", emblem_type="power_plant", latitude=45.805, longitude=4.942),
+            PollutionSensorTable(id="source_plant_03", name="Bron Industrial Emission Hub", emblem_type="factory", latitude=45.73, longitude=4.94),
+            PollutionSensorTable(id="source_factory_04", name="Saint-Priest Logistics Plant", emblem_type="factory", latitude=45.71, longitude=4.95),
+            PollutionSensorTable(id="source_plant_05", name="Meyzieu Waste Incineration Center", emblem_type="factory", latitude=45.78, longitude=4.99)
+        ]
+
+        for emitter in emitters:
+            if db.query(PollutionSensorTable).filter_by(id=emitter.id).first() is None:
+                db.add(emitter)
+                new_data_added = True
+
+        if new_data_added:
+            db.commit()
+            print("[DATABASE SEED ENGINE] Complete. Tables populated.")
+        else:
+            print("[DATABASE SEED ENGINE] No new placeholder data required.")
+    finally:
         db.close()
-        return  # Data is already seeded
-
-    print("[DATABASE SEED ENGINE] Injecting core placeholder assets into database tables...")
-    
-    # 1. Seed Stationary Point Emitters
-    emitters = [
-        PollutionSensorTable(id="source_factory_01", name="Vallée de la Chimie Industrial Complex", emblem_type="factory", latitude=45.76, longitude=4.878),
-        PollutionSensorTable(id="source_power_02", name="Villeurbanne District Thermal Power Plant", emblem_type="power_plant", latitude=45.805, longitude=4.942),
-        PollutionSensorTable(id="source_plant_03", name="Bron Industrial Emission Hub", emblem_type="factory", latitude=45.73, longitude=4.94),
-        PollutionSensorTable(id="source_factory_04", name="Saint-Priest Logistics Plant", emblem_type="factory", latitude=45.71, longitude=4.95),
-        PollutionSensorTable(id="source_plant_05", name="Meyzieu Waste Incineration Center", emblem_type="factory", latitude=45.78, longitude=4.99)
-    ]
-    db.add_all(emitters)
-
-    # 2. Seed 400 Micro-Grid Neighborhood Area Polygons
-    block_id_counter = 0
-    for i in range(-10, 10):
-        for j in range(-10, 10):
-            lat_offset = i * 0.003  
-            lng_offset = j * 0.004
-            block_lat = LYON_CENTER_LAT + lat_offset
-            block_lng = LYON_CENTER_LNG + lng_offset
-            
-            w = 0.0015
-            polygon_coordinates = [[
-                [block_lng - w, block_lat - w],
-                [block_lng + w, block_lat - w],
-                [block_lng + w, block_lat + w],
-                [block_lng - w, block_lat + w],
-                [block_lng - w, block_lat - w]
-            ]]
-            
-            name = f"Villeurbanne Block #{block_id_counter}" if j > -2 else f"Lyon District Block #{block_id_counter}"
-            block_record = AreaOfInterestTable(
-                id=f"block_{block_id_counter}",
-                name=name,
-                layer_type="street_block",
-                coordinates=polygon_coordinates
-            )
-            db.add(block_record)
-            block_id_counter += 1
-            
-    db.commit()
-    db.close()
-    print("[DATABASE SEED ENGINE] Complete. Tables populated.")
 
 seed_database_placeholders()
 
