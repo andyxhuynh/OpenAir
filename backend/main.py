@@ -315,6 +315,7 @@ def get_initial_blocks_map(user_id: Optional[str] = "default", db: Session = Dep
 
     return {
         "type": "FeatureCollection",
+        "wind": EnvironmentalEngine.get_current_wind_vector(),
         "user_context": {"name": user_profile.name, "mode_applied": user_profile.mode},
         "features": geojson_features
     }

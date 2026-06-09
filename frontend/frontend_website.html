@@ -163,6 +163,7 @@
         let heatmapLayer = null;
         let activeMarkers = []; // Keep a clean array of all painted markers
         let emissionSources = []; // Initial empty global array
+        const pollutionDataUrl = 'pollution_data.json';
 
         const centralLat = 45.7685;
         const centralLng = 4.8630;
@@ -192,8 +193,6 @@
             if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windFlowDeg})`);
         }
 
-<<<<<<< HEAD:frontend/test_andy.html
-=======
         function applyPollutionData(data) {
             if (data.wind) {
                 windSpeed = data.wind.speed ?? windSpeed;
@@ -215,11 +214,9 @@
 
         async function loadPollutionData() {
             try {
-                // Try to fetch from backend API first
                 const response = await fetch('http://localhost:8000/api/map/initial-blocks');
                 const geojsonData = await response.json();
                 
-                // Transform GeoJSON features into pollution data format
                 const sources = geojsonData.features
                     .filter(f => f.properties.layer_type === 'emission_source')
                     .map(f => ({
@@ -231,7 +228,7 @@
                     }));
                 
                 const pollutionData = {
-                    wind: { speed: 2.0, direction: 225 },
+                    wind: geojsonData.wind || { speed: 2.0, direction: 225 },
                     sources: sources.length > 0 ? sources : [
                         {
                             name: "Vallée de la Chimie Industrial Complex",
@@ -247,7 +244,6 @@
             } catch (error) {
                 console.warn('Backend unavailable, falling back to local JSON file:', error);
                 try {
-                    // Fallback to local JSON file
                     const response = await fetch(pollutionDataUrl);
                     const data = await response.json();
                     applyPollutionData(data);
@@ -268,7 +264,6 @@
             }
         }
 
->>>>>>> 19773c8d7dae48a8e976a4e7042ef58f4c245b8d:frontend/frontend_website.html
         function normalizeAngle(angle) {
             return ((angle % 360) + 360) % 360;
         }
@@ -491,42 +486,7 @@
             }
         });
 
-        // SYNCHRONIZED INITIALIZATION ROUTINE
-        async function fetchBackendData() {
-            try {
-                const response = await fetch('http://localhost:5000/api/pollution');
-                if (!response.ok) throw new Error('Network response was not ok');
-                
-                emissionSources = await response.json();
-                console.log("Data successfully loaded from backend:", emissionSources);         
-            } catch (error) {
-                console.error("Failed to fetch data from backend, using fallback:", error);
-                emissionSources = [
-                    { 
-                        name: "Villeurbanne Factory (Alpha)", 
-                        lat: 45.7830, 
-                        lng: 4.8820, 
-                        pollution: "high" 
-                    }, { 
-                        name: "Lyon East Factory (Beta)", 
-                        lat: 45.7650, 
-                        lng: 4.8990,  
-                        pollution: "high" 
-                    }, { 
-                        name: "Vaulx-en-Velin Factory (Gamma)", 
-                        lat: 45.7920, 
-                        lng: 4.9150,  
-                        pollution: "high" 
-                    }
-                ];
-            } finally {
-                updateWindUI();
-                renderHeatmapLayers(isElderMode ? 1.4 : 1);
-                requestAnimationFrame(updateAndDraw);
-            }
-        }
-
-        fetchBackendData();
+        loadPollutionData();
     </script>
 </body>
 </html>
