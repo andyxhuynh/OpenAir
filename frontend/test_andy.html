@@ -139,7 +139,8 @@
         // Global variables for dashboard state
         let isElderMode = false;
         let heatmapLayer = null;
-        let factoryMarker = null; // Track marker reference for easy cleanups
+        let factoryMarker = null; 
+        let emissionSources = []; // Instantiated empty, populated dynamically via fetch sync
 
         // Initialize Map centered near Lyon/Villeurbanne center area
         const centralLat = 45.7685;
@@ -152,20 +153,9 @@
         }).addTo(map);
 
         // CREATE A CUSTOM PANE FOR THE ICON OVERLAY
-        // This ensures the icon stays layered on top of the moving canvas particles
         map.createPane('iconOverlayPane');
-        map.getPane('iconOverlayPane').style.zIndex = 650; // Above tile layers, heatmaps, and canvas overlays
-        map.getPane('iconOverlayPane').style.pointerEvents = 'none'; // Keeps map drag/click interactions crisp
-
-        // Industrial corridor emitting dynamic point plumes
-        const emissionSources = [
-            {
-                name: "Villeurbanne Industrial Corridor (Factory Alpha)",
-                lat: 45.7830,
-                lng: 4.8820,
-                pollution: "high"
-            }
-        ];
+        map.getPane('iconOverlayPane').style.zIndex = 650; 
+        map.getPane('iconOverlayPane').style.pointerEvents = 'none'; 
 
         // --- Wind & Particle Control States ---
         const windSpeedInput = document.getElementById('wind-speed');
@@ -218,7 +208,6 @@
                 heatPoints.push([source.lat + driftLat * 1.5, source.lng + driftLng * 1.5, 0.35]);
 
                 // C. ADD THE CUSTOM FACTORY ICON OVER THE CENTER
-                // Points explicitly to your exact filename string below
                 const adjustedIcon = L.icon({
                     iconUrl: 'pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg',
                     iconSize: isElderMode ? [60, 60] : [42, 42],
@@ -227,7 +216,7 @@
 
                 factoryMarker = L.marker([source.lat, source.lng], { 
                     icon: adjustedIcon,
-                    pane: 'iconOverlayPane' // Bind it to our custom elevated stack layout pane
+                    pane: 'iconOverlayPane' 
                 }).addTo(map);
             });
 
@@ -237,10 +226,10 @@
                 blur: 30 * sizeMultiplier,
                 maxZoom: 15,
                 gradient: {
-                    0.10: '#10b981', // Clean Ambient Baseline (Emerald Green everywhere)
-                    0.45: '#facc15', // Wind Dispersion Border (Yellow Warn)
-                    0.70: '#f97316', // Close Plume Proximity (Orange Danger)
-                    0.90: '#ef4444'  // Factory Stack Center Core (Severe Red)
+                    0.10: '#10b981', 
+                    0.45: '#facc15', 
+                    0.70: '#f97316', 
+                    0.90: '#ef4444'  
                 }
             }).addTo(map);
         }
@@ -249,13 +238,13 @@
         windSpeedInput.addEventListener('input', (e) => {
             windSpeed = parseFloat(e.target.value);
             updateWindUI();
-            renderHeatmapLayers(1);
+            renderHeatmapLayers(isElderMode ? 1.4 : 1);
         });
 
         windDirInput.addEventListener('input', (e) => {
             windDeg = parseFloat(e.target.value);
             updateWindUI();
-            renderHeatmapLayers(1);
+            renderHeatmapLayers(isElderMode ? 1.4 : 1);
         });
 
         updateWindUI();
@@ -273,7 +262,7 @@
             windDeg = deg;
             windDirInput.value = Math.round(windDeg);
             updateWindUI();
-            renderHeatmapLayers(1);
+            renderHeatmapLayers(isElderMode ? 1.4 : 1);
         }
 
         if (compassSvg) {
@@ -348,9 +337,6 @@
             requestAnimationFrame(updateAndDraw);
         }
 
-        renderHeatmapLayers(1);
-        requestAnimationFrame(updateAndDraw);
-
         // Accessibility Toggles
         const modeToggleBtn = document.getElementById('mode-toggle');
         const bodyElement = document.body;
@@ -370,7 +356,7 @@
                         Factories near the highway are releasing heavy smoke. It is recommended to skip your daily walk outside until this clears up.
                     </p>
                 `;
-                renderHeatmapLayers(1);
+                renderHeatmapLayers(1.4);
             } else {
                 bodyElement.classList.remove('elder-mode');
                 modeToggleBtn.innerHTML = "👴 Switch to Elder Mode";
@@ -388,6 +374,46 @@
                 renderHeatmapLayers(1);
             }
         });
+
+        // SYNCHRONIZED INITIALIZATION ROUTINE
+        async function fetchBackendData() {
+            try {
+                const response = await fetch('http://localhost:5000/api/pollution');
+                if (!response.ok) throw new Error('Network response was not ok');
+                
+                emissionSources = await response.json();
+                console.log("Data successfully loaded from backend:", emissionSources);         
+                } catch (error) {
+                console.error("Failed to fetch data from backend, using fallback:", error);
+                // ADD MULTIPLE OBJECTS TO THIS ARRAY TO SHOW MORE PLUMES
+                emissionSources = [
+                    { 
+                        name: "Villeurbanne Factory (Alpha)", 
+                        lat: 45.7830, // Original spot
+                        lng: 4.8820, 
+                        pollution: "high" 
+                    }, { 
+                        name: "Lyon East Factory (Beta)", 
+                        lat: 45.7650, // Moved slightly south-west
+                        lng: 4.8990,  // Moved slightly east
+                        pollution: "high" 
+                    }, { 
+                        name: "Vaulx-en-Velin Factory (Gamma)", 
+                        lat: 45.7920, // Moved north
+                        lng: 4.9150,  // Moved further east
+                        pollution: "high" 
+                    }
+                ];
+            } finally {
+                // By grouping rendering configurations inside the 'finally' pipeline block, 
+                // we guarantee the UI boots up sequentially ONLY after data configuration resolves.
+                renderHeatmapLayers(isElderMode ? 1.4 : 1);
+                requestAnimationFrame(updateAndDraw);
+            }
+        }
+
+        // Call synchronization workflow sequence on entry load
+        fetchBackendData();
     </script>
 </body>
 </html>
