@@ -16,24 +16,34 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
 
     <style>
-        /* Define map dimensions */
         #map {
             height: 550px;
             width: 100%;
             border-radius: 0.5rem;
             z-index: 1;
         }
-        /* Canvas overlay placed above the map for plume particles */
         #map-overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none; /* let map interactions through */
+            pointer-events: none;
             z-index: 2;
         }
-        /* Elder mode styles for Bernard: High contrast and accessible text scaling */
+        .factory-tooltip {
+            background: rgba(22, 163, 74, 0.9);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.6);
+            border-radius: 0.4rem;
+            padding: 0.15rem 0.35rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            box-shadow: 0 1px 8px rgba(0,0,0,0.2);
+        }
+        .factory-tooltip::after {
+            border-top-color: rgba(22, 163, 74, 0.9);
+        }
         .elder-mode {
             font-size: 1.35rem;
         }
@@ -60,9 +70,7 @@
     </header>
 
     <main class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         <div class="space-y-6 lg:col-span-1">
-            
             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <h2 class="text-lg font-bold mb-3 flex items-center gap-2 text-gray-900">
                     📍 Current Region: <span class="text-blue-600">Villeurbanne / Lyon</span>
@@ -80,18 +88,35 @@
                 </div>
             </div>
 
-            <div id="technical-panel" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <h2 class="text-sm font-semibold tracking-wider text-gray-400 uppercase mb-3">Sensor Analytics (Advanced View)</h2>
-                <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Gauge Pressure:</span>
-                        <span class="font-mono font-medium">101,325 Pa</span>
+            <div id="activity-panel" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-sm font-semibold tracking-wider text-gray-400 uppercase mb-4">Outdoor Activity Guide</h2>
+                
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">🏃‍♂️</span>
+                            <span class="text-sm font-medium text-gray-700">Children's Play</span>
+                        </div>
+                        <span class="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded border border-red-200">Avoid</span>
                     </div>
-                    <div class="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                        <div class="bg-red-500 h-full w-4/5"></div>
+
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">🚴‍♀️</span>
+                            <span class="text-sm font-medium text-gray-700">Outdoor Exercise</span>
+                        </div>
+                        <span class="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded border border-red-200">Avoid</span>
                     </div>
-                    <p class="text-xs text-gray-500 italic mt-1">Raw engineering metrics processed via backend REST data stream.</p>
+
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">🪟</span>
+                            <span class="text-sm font-medium text-gray-700">Open Windows</span>
+                        </div>
+                        <span class="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-bold rounded border border-yellow-200">Caution</span>
+                    </div>
                 </div>
+                <p class="text-xs text-gray-500 italic mt-4">Recommendations based on hyper-local PM2.5 and NO2 dispersion.</p>
             </div>
         </div>
 
@@ -114,13 +139,11 @@
                                 <circle cx="0" cy="0" r="2" fill="#111827"/>
                             </g>
                         </svg>
-                        <div class="text-xs text-gray-500 mt-1">Wind Dir: <span id="wind-deg">225</span>°</div>
+                        <div class="text-xs text-gray-500 mt-1">Wind Dir (from): <span id="wind-deg">225</span>°</div>
                     </div>
 
                     <div class="flex flex-col items-start text-xs">
                         <label class="text-gray-600">Wind Speed: <span id="wind-speed-label">2.0</span> m/s</label>
-                        <input id="wind-speed" type="range" min="0" max="8" step="0.1" value="2" class="w-40" />
-                        <input id="wind-dir" type="range" min="0" max="360" step="1" value="225" class="w-40 mt-1" />
                     </div>
                 </div>
             </div>
@@ -136,55 +159,85 @@
     </footer>
 
     <script>
-        // Global variables for dashboard state
         let isElderMode = false;
         let heatmapLayer = null;
-        let factoryMarker = null; 
-        let emissionSources = []; // Instantiated empty, populated dynamically via fetch sync
+        let activeMarkers = []; // Keep a clean array of all painted markers
+        let emissionSources = []; // Initial empty global array
 
-        // Initialize Map centered near Lyon/Villeurbanne center area
         const centralLat = 45.7685;
         const centralLng = 4.8630;
         const map = L.map('map').setView([centralLat, centralLng], 13);
 
-        // Load OpenStreetMap Tiles
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
-        // CREATE A CUSTOM PANE FOR THE ICON OVERLAY
         map.createPane('iconOverlayPane');
-        map.getPane('iconOverlayPane').style.zIndex = 650; 
-        map.getPane('iconOverlayPane').style.pointerEvents = 'none'; 
+        map.getPane('iconOverlayPane').style.zIndex = 650;
+        map.getPane('iconOverlayPane').style.pointerEvents = 'none';
 
-        // --- Wind & Particle Control States ---
-        const windSpeedInput = document.getElementById('wind-speed');
-        const windDirInput = document.getElementById('wind-dir');
         const windDegLabel = document.getElementById('wind-deg');
         const windSpeedLabel = document.getElementById('wind-speed-label');
         const compassArrow = document.getElementById('compass-arrow');
 
-        let windSpeed = parseFloat(windSpeedInput.value); 
-        let windDeg = parseFloat(windDirInput.value); 
+        let windSpeed = 2.0;
+        let windDeg = 225;
+        let simulationTime = 0;
+        let windNoiseOffset = Math.random() * 1000;
 
         function updateWindUI() {
-            windDegLabel.textContent = Math.round(windDeg);
-            windSpeedLabel.textContent = windSpeed.toFixed(1);
-            if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windDeg})`);
+            if (windDegLabel) windDegLabel.textContent = Math.round(windDeg);
+            if (windSpeedLabel) windSpeedLabel.textContent = windSpeed.toFixed(1);
+            const windFlowDeg = normalizeAngle(windDeg + 180);
+            if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windFlowDeg})`);
         }
 
-        // 3. REGIONAL HEATMAP GENERATION WITH AMBIENT GREEN MATRIX
-        function renderHeatmapLayers(sizeMultiplier = 1) {
+        function normalizeAngle(angle) {
+            return ((angle % 360) + 360) % 360;
+        }
+
+        function shortestAngleDelta(from, to) {
+            const diff = normalizeAngle(to - from);
+            return diff > 180 ? diff - 360 : diff;
+        }
+
+        function updateWindAutomatically(deltaTime) {
+            simulationTime += deltaTime;
+            windSpeed = 3.25 + 2.75 * Math.sin(simulationTime * Math.PI / 20);
+            
+            const noise1 = Math.sin((simulationTime + windNoiseOffset) * 0.12) * 20;
+            const noise2 = Math.sin((simulationTime + windNoiseOffset) * 0.04) * 30;
+            const noise3 = Math.sin((simulationTime + windNoiseOffset) * 0.015) * 40;
+            const targetWindDeg = normalizeAngle(180 + noise1 + noise2 + noise3);
+
+            const maxStep = 30 * deltaTime;
+            const deltaDeg = shortestAngleDelta(windDeg, targetWindDeg);
+            windDeg = normalizeAngle(windDeg + Math.max(-maxStep, Math.min(maxStep, deltaDeg)));
+            
+            updateWindUI();
+        }
+
+        function getHeatmapScaleFromZoom() {
+            const zoom = map.getZoom();
+            if (zoom >= 15) return 1.5;
+            if (zoom === 14) return 1.0;
+            if (zoom === 13) return 0.5;
+            if (zoom === 12) return 0.25;
+            if (zoom <= 11) return 0.1;
+            return 1;
+        }
+
+        function renderHeatmapLayers(sizeMultiplier = getHeatmapScaleFromZoom()) {
             if (heatmapLayer) {
                 map.removeLayer(heatmapLayer);
             }
-            if (factoryMarker) {
-                map.removeLayer(factoryMarker);
-            }
+            
+            // Clear old active markers completely from map stack
+            activeMarkers.forEach(m => map.removeLayer(m));
+            activeMarkers = [];
 
             const heatPoints = [];
 
-            // A. INJECT ENTIRE LYON BASELINE METROPOLITAN MATRIX (Forces background to Green)
             const latMin = 45.7200, latMax = 45.8100;
             const lngMin = 4.8000, lngMax = 4.9300;
             const step = 0.0045; 
@@ -195,10 +248,9 @@
                 }
             }
 
-            // B. COMPUTE ADVECTION SMOKE PLUMES
-            const rad = windDeg * Math.PI / 180;
-            const driftLat = -Math.sin(rad) * windSpeed * 0.0018;
-            const driftLng = Math.cos(rad) * windSpeed * 0.0018;
+            const flowRad = normalizeAngle(windDeg + 180) * Math.PI / 180;
+            const driftLat = Math.cos(flowRad) * windSpeed * 0.0018;
+            const driftLng = Math.sin(flowRad) * windSpeed * 0.0018;
 
             emissionSources.forEach(source => {
                 heatPoints.push([source.lat, source.lng, 1.0]);
@@ -207,20 +259,20 @@
                 heatPoints.push([source.lat + driftLat * 1.0, source.lng + driftLng * 1.0, 0.55]);
                 heatPoints.push([source.lat + driftLat * 1.5, source.lng + driftLng * 1.5, 0.35]);
 
-                // C. ADD THE CUSTOM FACTORY ICON OVER THE CENTER
                 const adjustedIcon = L.icon({
                     iconUrl: 'pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg',
                     iconSize: isElderMode ? [60, 60] : [42, 42],
                     iconAnchor: isElderMode ? [30, 30] : [21, 21]
                 });
 
-                factoryMarker = L.marker([source.lat, source.lng], { 
+                const factoryMarker = L.marker([source.lat, source.lng], { 
                     icon: adjustedIcon,
-                    pane: 'iconOverlayPane' 
+                    pane: 'iconOverlayPane'
                 }).addTo(map);
+
+                activeMarkers.push(factoryMarker);
             });
 
-            // Initialize Heatmap Spectrum Engine
             heatmapLayer = L.heatLayer(heatPoints, {
                 radius: 45 * sizeMultiplier,
                 blur: 30 * sizeMultiplier,
@@ -234,22 +286,6 @@
             }).addTo(map);
         }
 
-        // Re-render data matrix when wind values morph
-        windSpeedInput.addEventListener('input', (e) => {
-            windSpeed = parseFloat(e.target.value);
-            updateWindUI();
-            renderHeatmapLayers(isElderMode ? 1.4 : 1);
-        });
-
-        windDirInput.addEventListener('input', (e) => {
-            windDeg = parseFloat(e.target.value);
-            updateWindUI();
-            renderHeatmapLayers(isElderMode ? 1.4 : 1);
-        });
-
-        updateWindUI();
-
-        // Compass interactivity mapping
         const compassSvg = document.getElementById('compass-svg');
         let isDraggingCompass = false;
 
@@ -260,9 +296,8 @@
             let deg = Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI;
             if (deg < 0) deg += 360;
             windDeg = deg;
-            windDirInput.value = Math.round(windDeg);
             updateWindUI();
-            renderHeatmapLayers(isElderMode ? 1.4 : 1);
+            renderHeatmapLayers(1);
         }
 
         if (compassSvg) {
@@ -275,7 +310,6 @@
             window.addEventListener('touchend', () => { isDraggingCompass = false; });
         }
 
-        // Particle Canvas Setup
         const canvas = document.getElementById('map-overlay');
         const ctx = canvas.getContext('2d');
         let particles = [];
@@ -290,7 +324,8 @@
             canvas.style.height = rect.height + 'px';
         }
 
-        map.on('move resize zoom', () => { particles = []; resizeCanvas(); });
+        map.on('move resize', () => { particles = []; resizeCanvas(); });
+        map.on('zoomend', () => renderHeatmapLayers());
         resizeCanvas();
 
         function emitFromSources(dt) {
@@ -298,11 +333,11 @@
                 const rate = 50; 
                 const count = Math.floor(rate * dt);
                 const pt = map.latLngToContainerPoint([source.lat, source.lng]);
+                const flowRad = normalizeAngle(windDeg + 180) * Math.PI / 180;
                 for (let i = 0; i < count; i++) {
                     const life = 2.5 + Math.random() * 3.5;
-                    const rad = windDeg * Math.PI / 180;
-                    const vx = Math.cos(rad) * windSpeed * (22 + Math.random() * 8);
-                    const vy = Math.sin(rad) * windSpeed * (22 + Math.random() * 8);
+                    const vx = Math.sin(flowRad) * windSpeed * (22 + Math.random() * 8);
+                    const vy = -Math.cos(flowRad) * windSpeed * (22 + Math.random() * 8);
                     particles.push({x: pt.x, y: pt.y, vx, vy, life, age: 0});
                 }
             });
@@ -312,6 +347,7 @@
             const dt = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
 
+            updateWindAutomatically(dt);
             emitFromSources(dt);
 
             for (let i = particles.length - 1; i >= 0; i--) {
@@ -334,13 +370,18 @@
                 ctx.fill();
             });
 
+            const lastTick = Math.floor((simulationTime - dt) * 5);
+            const currentTick = Math.floor(simulationTime * 5);
+            if (currentTick !== lastTick) {
+                renderHeatmapLayers();
+            }
+
             requestAnimationFrame(updateAndDraw);
         }
 
         // Accessibility Toggles
         const modeToggleBtn = document.getElementById('mode-toggle');
         const bodyElement = document.body;
-        const technicalPanel = document.getElementById('technical-panel');
         const statusSummary = document.getElementById('status-summary');
 
         modeToggleBtn.addEventListener('click', () => {
@@ -349,7 +390,6 @@
                 bodyElement.classList.add('elder-mode');
                 modeToggleBtn.innerHTML = "🧒 Switch to Standard Mode";
                 modeToggleBtn.classList.replace('bg-blue-600', 'bg-gray-700');
-                technicalPanel.classList.add('hidden');
                 statusSummary.innerHTML = `
                     <p class="font-bold text-red-700 text-lg">⚠️ AIR IS POOR TODAY</p>
                     <p class="text-md text-gray-900 leading-relaxed font-medium">
@@ -361,7 +401,6 @@
                 bodyElement.classList.remove('elder-mode');
                 modeToggleBtn.innerHTML = "👴 Switch to Elder Mode";
                 modeToggleBtn.classList.replace('bg-gray-700', 'bg-blue-600');
-                technicalPanel.classList.remove('hidden');
                 statusSummary.innerHTML = `
                     <p class="text-sm text-gray-600 leading-relaxed">
                         Showing hyper-local real-time environmental metrics compiled from weather stations and local factory monitoring sensors.
@@ -383,36 +422,33 @@
                 
                 emissionSources = await response.json();
                 console.log("Data successfully loaded from backend:", emissionSources);         
-                } catch (error) {
+            } catch (error) {
                 console.error("Failed to fetch data from backend, using fallback:", error);
-                // ADD MULTIPLE OBJECTS TO THIS ARRAY TO SHOW MORE PLUMES
                 emissionSources = [
                     { 
                         name: "Villeurbanne Factory (Alpha)", 
-                        lat: 45.7830, // Original spot
+                        lat: 45.7830, 
                         lng: 4.8820, 
                         pollution: "high" 
                     }, { 
                         name: "Lyon East Factory (Beta)", 
-                        lat: 45.7650, // Moved slightly south-west
-                        lng: 4.8990,  // Moved slightly east
+                        lat: 45.7650, 
+                        lng: 4.8990,  
                         pollution: "high" 
                     }, { 
                         name: "Vaulx-en-Velin Factory (Gamma)", 
-                        lat: 45.7920, // Moved north
-                        lng: 4.9150,  // Moved further east
+                        lat: 45.7920, 
+                        lng: 4.9150,  
                         pollution: "high" 
                     }
                 ];
             } finally {
-                // By grouping rendering configurations inside the 'finally' pipeline block, 
-                // we guarantee the UI boots up sequentially ONLY after data configuration resolves.
+                updateWindUI();
                 renderHeatmapLayers(isElderMode ? 1.4 : 1);
                 requestAnimationFrame(updateAndDraw);
             }
         }
 
-        // Call synchronization workflow sequence on entry load
         fetchBackendData();
     </script>
 </body>
