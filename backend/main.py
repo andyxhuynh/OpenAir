@@ -110,7 +110,10 @@ def seed_database_placeholders():
     # 1. Seed Stationary Point Emitters
     emitters = [
         PollutionSensorTable(id="source_factory_01", name="Vallée de la Chimie Industrial Complex", emblem_type="factory", latitude=45.76, longitude=4.878),
-        PollutionSensorTable(id="source_power_02", name="Villeurbanne District Thermal Power Plant", emblem_type="power_plant", latitude=45.805, longitude=4.942)
+        PollutionSensorTable(id="source_power_02", name="Villeurbanne District Thermal Power Plant", emblem_type="power_plant", latitude=45.805, longitude=4.942),
+        PollutionSensorTable(id="source_plant_03", name="Bron Industrial Emission Hub", emblem_type="factory", latitude=45.73, longitude=4.94),
+        PollutionSensorTable(id="source_factory_04", name="Saint-Priest Logistics Plant", emblem_type="factory", latitude=45.71, longitude=4.95),
+        PollutionSensorTable(id="source_plant_05", name="Meyzieu Waste Incineration Center", emblem_type="factory", latitude=45.78, longitude=4.99)
     ]
     db.add_all(emitters)
 

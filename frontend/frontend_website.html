@@ -194,8 +194,9 @@
         }
 
         function createFactoryIcon(size = [42, 42]) {
-            return L.icon({
-                iconUrl: 'pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg',
+            return L.divIcon({
+                html: `<div style="width:${size[0]}px;height:${size[1]}px;background-image:url('./pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg');background-size:contain;background-position:center;background-repeat:no-repeat"></div>`,
+                className: 'custom-factory-divicon',
                 iconSize: size,
                 iconAnchor: [size[0] / 2, size[1]],
                 popupAnchor: [0, -size[1] / 2]
@@ -343,8 +344,7 @@
                 const markerIcon = createFactoryIcon(isElderMode ? [60, 60] : [42, 42]);
 
                 const factoryMarker = L.marker([source.lat, source.lng], {
-                    icon: markerIcon,
-                    pane: 'iconOverlayPane'
+                    icon: markerIcon
                 }).addTo(map);
 
                 factoryMarker.bindTooltip(source.name, {
@@ -354,16 +354,7 @@
                     className: 'factory-tooltip'
                 }).openTooltip();
 
-                const fallbackCircle = L.circleMarker([source.lat, source.lng], {
-                    radius: isElderMode ? 12 : 8,
-                    color: '#dc2626',
-                    fillColor: '#fca5a5',
-                    fillOpacity: 0.65,
-                    weight: 2,
-                    pane: 'overlayPane'
-                }).addTo(map);
-
-                activeMarkers.push(factoryMarker, fallbackCircle);
+                activeMarkers.push(factoryMarker);
             });
 
             heatmapLayer = L.heatLayer(heatPoints, {
