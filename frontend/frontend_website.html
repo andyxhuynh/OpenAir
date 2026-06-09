@@ -6,108 +6,69 @@
     <title>OpenAir - Environmental Dashboard</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-          
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
 
     <style>
-        #map {
-            height: 550px;
-            width: 100%;
-            border-radius: 0.5rem;
-            z-index: 1;
+        #map { height: 550px; width: 100%; border-radius: 0.5rem; z-index: 1; }
+        #map-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+        
+        .factory-tooltip { 
+            background: rgba(22, 163, 74, 0.95); 
+            color: white; 
+            border: 1px solid rgba(255,255,255,0.4);
+            border-radius: 0.4rem; 
+            padding: 0.35rem 0.6rem; 
+            font-size: 0.75rem; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
         }
-        #map-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 2;
-        }
-        .factory-tooltip {
-            background: rgba(22, 163, 74, 0.9);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.6);
-            border-radius: 0.4rem;
-            padding: 0.15rem 0.35rem;
-            font-size: 0.75rem;
-            font-weight: 700;
-            box-shadow: 0 1px 8px rgba(0,0,0,0.2);
-        }
-        .factory-tooltip::after {
-            border-top-color: rgba(22, 163, 74, 0.9);
-        }
-        .elder-mode {
-            font-size: 1.35rem;
-        }
+        
+        .elder-mode { font-size: 1.35rem; }
         .elder-mode h1 { font-size: 2.25rem; }
         .elder-mode h2 { font-size: 1.75rem; }
         .elder-mode .nav-btn { padding: 0.75rem 1.5rem; font-size: 1.25rem; }
+        .elder-mode #activity-panel h2 { font-size: 1.25rem; color: #111827; }
+        .elder-mode #activity-panel .flex.items-center span.text-sm { font-size: 1.35rem; font-weight: 600; }
+        .elder-mode #activity-panel span.text-xl { font-size: 2.25rem; }
+        .elder-mode #activity-panel p.text-xs { font-size: 1.1rem; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 transition-all duration-200">
 
-    <div id="alert-banner" class="bg-red-600 text-white text-center py-3 px-4 font-bold tracking-wide shadow-md flex justify-center items-center gap-2">
-        <span>⚠️ CRITICAL AIR ALERT: High emissions detected near Industrial Corridor. Vulnerable groups should stay indoors.</span>
+    <div id="alert-banner" class="bg-red-600 text-white text-center py-3 px-4 font-bold tracking-wide shadow-md">
+        ⚠️ CRITICAL AIR ALERT: High emissions detected near Industrial Corridor. Vulnerable groups should stay indoors.
     </div>
 
-    <header class="bg-white border-b border-gray-200 py-4 px-6 flex justify-between items-center shadow-sm">
-        <div class="flex items-center gap-2">
-            <span class="text-2xl">🍃</span>
-            <h1 class="text-xl font-bold text-gray-900 tracking-tight">OpenAir</h1>
-        </div>
-        
-        <button id="mode-toggle" class="nav-btn bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow transition text-sm">
+    <header class="bg-white border-b py-4 px-6 flex justify-between items-center shadow-sm">
+        <h1 class="text-xl font-bold text-gray-900">🍃 OpenAir</h1>
+        <button id="mode-toggle" class="nav-btn bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg">
             👴 Switch to Elder Mode
         </button>
     </header>
 
     <main class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="space-y-6 lg:col-span-1">
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <h2 class="text-lg font-bold mb-3 flex items-center gap-2 text-gray-900">
-                    📍 Current Region: <span class="text-blue-600">Villeurbanne / Lyon</span>
-                </h2>
+            <div class="bg-white p-6 rounded-xl shadow-sm border">
+                <h2 class="text-lg font-bold mb-3">📍 Villeurbanne / Lyon</h2>
                 <hr class="my-3 border-gray-100">
-                
                 <div id="status-summary" class="space-y-3">
-                    <p class="text-sm text-gray-600 leading-relaxed">
-                        Showing hyper-local real-time environmental metrics compiled from weather stations and local factory monitoring sensors.
-                    </p>
-                    <div class="p-3 bg-red-50 text-red-800 rounded-lg border border-red-100 font-medium text-sm flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-red-600 animate-pulse"></span>
-                        Status: Unhealthy Air Quality Plumes Active
-                    </div>
+                    <p class="text-sm text-gray-600">Showing hyper-local environmental metrics from live APIs.</p>
+                    <div class="p-3 bg-red-50 text-red-800 rounded-lg font-medium text-sm">Status: Plumes Active</div>
                 </div>
             </div>
 
-            <div id="activity-panel" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <h2 class="text-sm font-semibold tracking-wider text-gray-400 uppercase mb-4">Outdoor Activity Guide</h2>
-                
+            <div id="activity-panel" class="bg-white p-6 rounded-xl shadow-sm border">
+                <h2 class="text-sm font-semibold text-gray-400 uppercase mb-4">Outdoor Activity Guide</h2>
                 <div class="space-y-4">
                     <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            <span class="text-xl">🏃‍♂️</span>
-                            <span class="text-sm font-medium text-gray-700">Children's Play</span>
-                        </div>
-                        <span class="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded border border-red-200">Avoid</span>
+                        <div class="flex items-center gap-3"><span class="text-xl">🏃‍♂️</span><span class="text-sm font-medium">Children's Play</span></div>
+                        <span class="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded">Avoid</span>
                     </div>
-
                     <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            <span class="text-xl">🚴‍♀️</span>
-                            <span class="text-sm font-medium text-gray-700">Outdoor Exercise</span>
-                        </div>
-                        <span class="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded border border-red-200">Avoid</span>
+                        <div class="flex items-center gap-3"><span class="text-xl">🚴‍♀️</span><span class="text-sm font-medium">Exercise</span></div>
+                        <span class="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded">Avoid</span>
                     </div>
-
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
                             <span class="text-xl">🪟</span>
@@ -116,389 +77,193 @@
                         <span class="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-bold rounded border border-yellow-200">Caution</span>
                     </div>
                 </div>
-                <p class="text-xs text-gray-500 italic mt-4">Recommendations based on hyper-local PM2.5 and NO2 dispersion.</p>
             </div>
         </div>
 
-        <div class="lg:col-span-2 bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4">
-            <div class="flex justify-between items-center">
-                <h2 class="text-md font-bold text-gray-900">Live Greater Lyon Air Quality Grid</h2>
+        <div class="lg:col-span-2 bg-white p-4 rounded-xl shadow-sm border flex flex-col gap-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <h2 class="text-md font-bold">Live Grid</h2>
                 
                 <div class="flex items-center gap-2 text-xs font-semibold">
-                    <span class="text-emerald-600">Green Baseline (Safe)</span>
+                    <span class="text-emerald-600">Safe Baseline</span>
                     <div class="w-24 h-3 rounded bg-gradient-to-r from-emerald-400 via-yellow-400 to-red-500 opacity-80"></div>
                     <span class="text-red-600">Plume Risk</span>
                 </div>
 
-                <div class="flex items-center gap-3">
-                    <div id="compass" class="flex flex-col items-center text-xs">
-                        <svg id="compass-svg" width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-                            <circle cx="24" cy="24" r="22" stroke="#94a3b8" stroke-width="1" fill="#fff"/>
-                            <g id="compass-arrow" transform="translate(24 24)">
-                                <polygon points="0,-16 6,6 0,0 -6,6" fill="#ef4444"/>
-                                <circle cx="0" cy="0" r="2" fill="#111827"/>
-                            </g>
-                        </svg>
-                        <div class="text-xs text-gray-500 mt-1">Wind Dir (from): <span id="wind-deg">225</span>°</div>
-                    </div>
-
-                    <div class="flex flex-col items-start text-xs">
-                        <label class="text-gray-600">Wind Speed: <span id="wind-speed-label">2.0</span> m/s</label>
-                    </div>
+                <div id="wind-display" class="px-3 py-1 bg-blue-50 text-blue-800 text-xs font-bold rounded-full border border-blue-200">
+                    📡 Fetching Live Weather...
                 </div>
             </div>
             
-            <div id="map" class="relative">
-                <canvas id="map-overlay"></canvas>
-            </div>
+            <div id="map" class="relative"><canvas id="map-overlay"></canvas></div>
         </div>
     </main>
 
-    <footer class="text-center py-8 text-xs text-gray-400 border-t border-gray-200 mt-12">
-        OpenAir Project Template • Built for Local Civic Diagnostics
-    </footer>
-
     <script>
         let isElderMode = false;
-        let heatmapLayer = null;
-        let activeMarkers = []; // Keep a clean array of all painted markers
-        let emissionSources = []; // Initial empty global array
-        const pollutionDataUrl = 'pollution_data.json';
-
-        const centralLat = 45.7685;
-        const centralLng = 4.8630;
-        const map = L.map('map').setView([centralLat, centralLng], 13);
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
-
-        map.createPane('iconOverlayPane');
-        map.getPane('iconOverlayPane').style.zIndex = 650;
-        map.getPane('iconOverlayPane').style.pointerEvents = 'none';
-
-        const windDegLabel = document.getElementById('wind-deg');
-        const windSpeedLabel = document.getElementById('wind-speed-label');
-        const compassArrow = document.getElementById('compass-arrow');
+        
+        let heatmapLayer = null; 
+        let factoryMarkers = []; 
+        let emissionSources = [];
 
         let windSpeed = 2.0;
         let windDeg = 225;
-        let simulationTime = 0;
-        let windNoiseOffset = Math.random() * 1000;
 
-        function updateWindUI() {
-            if (windDegLabel) windDegLabel.textContent = Math.round(windDeg);
-            if (windSpeedLabel) windSpeedLabel.textContent = windSpeed.toFixed(1);
-            const windFlowDeg = normalizeAngle(windDeg + 180);
-            if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windFlowDeg})`);
-        }
+        const map = L.map('map').setView([45.7685, 4.8630], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         function createFactoryIcon(size = [42, 42]) {
-            return L.divIcon({
-                html: `<div style="width:${size[0]}px;height:${size[1]}px;background-image:url('./pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg');background-size:contain;background-position:center;background-repeat:no-repeat"></div>`,
-                className: 'custom-factory-divicon',
-                iconSize: size,
-                iconAnchor: [size[0] / 2, size[1]],
-                popupAnchor: [0, -size[1] / 2]
+            return L.icon({
+                iconUrl: 'pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg',
+                iconSize: size, iconAnchor: [size[0] / 2, size[1]], popupAnchor: [0, -size[1] / 2]
             });
         }
 
-        function applyPollutionData(data) {
-            if (data.wind) {
-                windSpeed = data.wind.speed ?? windSpeed;
-                windDeg = data.wind.direction ?? windDeg;
-            }
-            if (Array.isArray(data.sources) && data.sources.length > 0) {
-                emissionSources = data.sources.map(source => ({
-                    name: source.name || 'Source',
-                    lat: source.latitude,
-                    lng: source.longitude,
-                    pollution: source.risk_level || 'moderate',
-                    emblem: source.emblem_type || 'factory'
-                }));
-            }
-            updateWindUI();
-            renderHeatmapLayers(1);
-            requestAnimationFrame(updateAndDraw);
-        }
-
-        async function loadPollutionData() {
-            try {
-                const response = await fetch('http://localhost:8000/api/map/initial-blocks');
-                const geojsonData = await response.json();
-                
-                const sources = geojsonData.features
-                    .filter(f => f.properties.layer_type === 'emission_source')
-                    .map(f => ({
-                        name: f.properties.source_name,
-                        latitude: f.geometry.coordinates[1],
-                        longitude: f.geometry.coordinates[0],
-                        emblem_type: f.properties.emblem_type,
-                        risk_level: f.properties.core_pollutants.pm25 > 30 ? 'high' : 'moderate'
-                    }));
-                
-                const pollutionData = {
-                    wind: geojsonData.wind || { speed: 2.0, direction: 225 },
-                    sources: sources.length > 0 ? sources : [
-                        {
-                            name: "Vallée de la Chimie Industrial Complex",
-                            latitude: 45.76,
-                            longitude: 4.878,
-                            emblem_type: "factory",
-                            risk_level: "high"
-                        }
-                    ]
-                };
-                
-                applyPollutionData(pollutionData);
-            } catch (error) {
-                console.warn('Backend unavailable, falling back to local JSON file:', error);
-                try {
-                    const response = await fetch(pollutionDataUrl);
-                    const data = await response.json();
-                    applyPollutionData(data);
-                } catch (fallbackError) {
-                    console.warn('Unable to load pollution data, using hardcoded defaults.', fallbackError);
-                    emissionSources = [
-                        {
-                            name: "Villeurbanne Industrial Corridor (Factory Alpha)",
-                            lat: 45.7830,
-                            lng: 4.8820,
-                            pollution: "high"
-                        }
-                    ];
-                    updateWindUI();
-                    renderHeatmapLayers(1);
-                    requestAnimationFrame(updateAndDraw);
-                }
-            }
-        }
-
-        function normalizeAngle(angle) {
-            return ((angle % 360) + 360) % 360;
-        }
-
-        function shortestAngleDelta(from, to) {
-            const diff = normalizeAngle(to - from);
-            return diff > 180 ? diff - 360 : diff;
-        }
-
-        function updateWindAutomatically(deltaTime) {
-            simulationTime += deltaTime;
-            windSpeed = 3.25 + 2.75 * Math.sin(simulationTime * Math.PI / 20);
-            
-            const noise1 = Math.sin((simulationTime + windNoiseOffset) * 0.12) * 20;
-            const noise2 = Math.sin((simulationTime + windNoiseOffset) * 0.04) * 30;
-            const noise3 = Math.sin((simulationTime + windNoiseOffset) * 0.015) * 40;
-            const targetWindDeg = normalizeAngle(180 + noise1 + noise2 + noise3);
-
-            const maxStep = 30 * deltaTime;
-            const deltaDeg = shortestAngleDelta(windDeg, targetWindDeg);
-            windDeg = normalizeAngle(windDeg + Math.max(-maxStep, Math.min(maxStep, deltaDeg)));
-            
-            updateWindUI();
-        }
-
+        // FIXED: Capped the maximum size multiplier to 2.0 so Leaflet's internal canvas never glitches/clips
         function getHeatmapScaleFromZoom() {
-            const zoom = map.getZoom();
-            if (zoom >= 15) return 1.5;
-            if (zoom === 14) return 1.0;
-            if (zoom === 13) return 0.5;
-            if (zoom === 12) return 0.25;
-            if (zoom <= 11) return 0.1;
+            const z = map.getZoom();
+            if (z >= 16) return 2.0; 
+            if (z === 15) return 1.5; 
+            if (z === 14) return 1.0; 
+            if (z <= 13) return 0.5;
             return 1;
         }
 
         function renderHeatmapLayers(sizeMultiplier = getHeatmapScaleFromZoom()) {
-            if (heatmapLayer) {
-                map.removeLayer(heatmapLayer);
-            }
-            
-            // Clear old active markers completely from map stack
-            activeMarkers.forEach(m => map.removeLayer(m));
-            activeMarkers = [];
+            if (heatmapLayer) map.removeLayer(heatmapLayer);
+            factoryMarkers.forEach(m => map.removeLayer(m)); 
+            factoryMarkers = []; 
 
             const heatPoints = [];
 
-            const latMin = 45.7200, latMax = 45.8100;
-            const lngMin = 4.8000, lngMax = 4.9300;
-            const step = 0.0045; 
-
-            for (let l = latMin; l <= latMax; l += step) {
-                for (let g = lngMin; g <= lngMax; g += step) {
-                    heatPoints.push([l, g, 0.15]);
-                }
+            // Background Ambient Matrix
+            for (let l = 45.7200; l <= 45.8100; l += 0.0045) {
+                for (let g = 4.8000; g <= 4.9300; g += 0.0045) heatPoints.push([l, g, 0.15]);
             }
 
-            const flowRad = normalizeAngle(windDeg + 180) * Math.PI / 180;
-            const driftLat = Math.cos(flowRad) * windSpeed * 0.0018;
-            const driftLng = Math.sin(flowRad) * windSpeed * 0.0018;
+            // Plume Drift Math
+            const rad = windDeg * Math.PI / 180;
+            const driftLat = Math.cos(rad) * windSpeed * 0.0018;
+            const driftLng = Math.sin(rad) * windSpeed * 0.0018;
 
             emissionSources.forEach(source => {
-                heatPoints.push([source.lat, source.lng, 1.0]);
-                heatPoints.push([source.lat + driftLat * 0.3, source.lng + driftLng * 0.3, 0.9]);
-                heatPoints.push([source.lat + driftLat * 0.6, source.lng + driftLng * 0.6, 0.75]);
-                heatPoints.push([source.lat + driftLat * 1.0, source.lng + driftLng * 1.0, 0.55]);
-                heatPoints.push([source.lat + driftLat * 1.5, source.lng + driftLng * 1.5, 0.35]);
+                const int = source.intensity;
+                
+                heatPoints.push([source.lat, source.lng, 1.0 * int]);
+                heatPoints.push([source.lat + driftLat * 0.3, source.lng + driftLng * 0.3, 0.9 * int]);
+                heatPoints.push([source.lat + driftLat * 0.6, source.lng + driftLng * 0.6, 0.75 * int]);
+                heatPoints.push([source.lat + driftLat * 1.0, source.lng + driftLng * 1.0, 0.55 * int]);
+                heatPoints.push([source.lat + driftLat * 1.5, source.lng + driftLng * 1.5, 0.35 * int]);
 
-                const markerIcon = createFactoryIcon(isElderMode ? [60, 60] : [42, 42]);
-
-                const factoryMarker = L.marker([source.lat, source.lng], {
-                    icon: markerIcon
-                }).addTo(map);
-
-                factoryMarker.bindTooltip(source.name, {
-                    permanent: true,
-                    direction: 'top',
-                    offset: [0, -12],
-                    className: 'factory-tooltip'
-                }).openTooltip();
-
-                activeMarkers.push(factoryMarker);
+                let marker = L.marker([source.lat, source.lng], { icon: createFactoryIcon(isElderMode ? [60, 60] : [42, 42]) }).addTo(map);
+                
+                let tooltipContent = `
+                    <div style="text-align: center; line-height: 1.4;">
+                        <strong>${source.name}</strong><br>
+                        <span style="font-size: 0.7rem; color: #fef08a;">PM2.5: ${source.pm25} µg/m³ | NO2: ${source.no2}</span>
+                    </div>
+                `;
+                marker.bindTooltip(tooltipContent, { permanent: true, direction: 'top', offset: [0, -10], className: 'factory-tooltip' }).openTooltip();
+                factoryMarkers.push(marker);
             });
 
-            heatmapLayer = L.heatLayer(heatPoints, {
-                radius: 45 * sizeMultiplier,
-                blur: 30 * sizeMultiplier,
-                maxZoom: 15,
-                gradient: {
-                    0.10: '#10b981', 
-                    0.45: '#facc15', 
-                    0.70: '#f97316', 
-                    0.90: '#ef4444'  
-                }
+            // FIXED: Radius and Blur are strictly matched and capped to prevent hard circles
+            heatmapLayer = L.heatLayer(heatPoints, { 
+                radius: 35 * sizeMultiplier, 
+                blur: 35 * sizeMultiplier, 
+                maxZoom: 16, // Lets Leaflet natively handle zooming past 16 without recalculating
+                gradient: { 0.10: '#10b981', 0.45: '#facc15', 0.70: '#f97316', 0.90: '#ef4444' } 
             }).addTo(map);
         }
 
-        const compassSvg = document.getElementById('compass-svg');
-        let isDraggingCompass = false;
-
-        function setWindDegFromEvent(ev) {
-            const rect = compassSvg.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            let deg = Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI;
-            if (deg < 0) deg += 360;
-            windDeg = deg;
-            updateWindUI();
-            renderHeatmapLayers(1);
-        }
-
-        if (compassSvg) {
-            compassSvg.style.cursor = 'pointer';
-            compassSvg.addEventListener('mousedown', (e) => { isDraggingCompass = true; setWindDegFromEvent(e); });
-            window.addEventListener('mousemove', (e) => { if (isDraggingCompass) setWindDegFromEvent(e); });
-            window.addEventListener('mouseup', () => { isDraggingCompass = false; });
-            compassSvg.addEventListener('touchstart', (e) => { e.preventDefault(); isDraggingCompass = true; setWindDegFromEvent(e.touches[0]); }, {passive:false});
-            window.addEventListener('touchmove', (e) => { if (isDraggingCompass) setWindDegFromEvent(e.touches[0]); }, {passive:false});
-            window.addEventListener('touchend', () => { isDraggingCompass = false; });
-        }
-
+        // Canvas Particles Setup
         const canvas = document.getElementById('map-overlay');
         const ctx = canvas.getContext('2d');
         let particles = [];
         let lastTime = performance.now();
 
         function resizeCanvas() {
-            const container = map.getContainer();
-            const rect = container.getBoundingClientRect();
-            canvas.width = Math.round(rect.width);
-            canvas.height = Math.round(rect.height);
-            canvas.style.width = rect.width + 'px';
-            canvas.style.height = rect.height + 'px';
+            const rect = map.getContainer().getBoundingClientRect();
+            canvas.width = Math.round(rect.width); canvas.height = Math.round(rect.height);
+            canvas.style.width = rect.width + 'px'; canvas.style.height = rect.height + 'px';
+            canvas.style.top = '0px'; canvas.style.left = '0px';
         }
 
-        map.on('move resize', () => { particles = []; resizeCanvas(); });
-        map.on('zoomend', () => renderHeatmapLayers());
+        map.on('move', () => { particles = []; });
+        map.on('zoomstart', () => { canvas.style.opacity = '0'; particles = []; });
+        map.on('zoomend', () => { resizeCanvas(); renderHeatmapLayers(); canvas.style.opacity = '1'; });
         resizeCanvas();
-
-        function emitFromSources(dt) {
-            emissionSources.forEach(source => {
-                const rate = 50; 
-                const count = Math.floor(rate * dt);
-                const pt = map.latLngToContainerPoint([source.lat, source.lng]);
-                const flowRad = normalizeAngle(windDeg + 180) * Math.PI / 180;
-                for (let i = 0; i < count; i++) {
-                    const life = 2.5 + Math.random() * 3.5;
-                    const vx = Math.sin(flowRad) * windSpeed * (22 + Math.random() * 8);
-                    const vy = -Math.cos(flowRad) * windSpeed * (22 + Math.random() * 8);
-                    particles.push({x: pt.x, y: pt.y, vx, vy, life, age: 0});
-                }
-            });
-        }
 
         function updateAndDraw(now) {
             const dt = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
 
-            updateWindAutomatically(dt);
-            emitFromSources(dt);
+            emissionSources.forEach(source => {
+                const count = Math.floor((60 * source.intensity) * dt);
+                const pt = map.latLngToContainerPoint([source.lat, source.lng]);
+                for (let i = 0; i < count; i++) {
+                    const rad = windDeg * Math.PI / 180;
+                    particles.push({
+                        x: pt.x, y: pt.y, 
+                        vx: Math.sin(rad) * windSpeed * (22 + Math.random() * 8), 
+                        vy: -Math.cos(rad) * windSpeed * (22 + Math.random() * 8), 
+                        life: 2.5 + Math.random() * 3.5, age: 0
+                    });
+                }
+            });
 
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
-                p.x += p.vx * dt;
-                p.y += p.vy * dt;
-                p.age += dt;
+                p.x += p.vx * dt; p.y += p.vy * dt; p.age += dt;
                 if (p.age >= p.life) particles.splice(i, 1);
             }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             particles.forEach(p => {
                 const alpha = Math.max(0, 1 - p.age / p.life) * 0.35;
-                const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 8);
-                grd.addColorStop(0, `rgba(220,38,38,${alpha})`);
-                grd.addColorStop(1, `rgba(220,38,38,0)`);
-                ctx.fillStyle = grd;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.fillStyle = `rgba(220,38,38,${alpha})`;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2); ctx.fill();
             });
-
-            const lastTick = Math.floor((simulationTime - dt) * 5);
-            const currentTick = Math.floor(simulationTime * 5);
-            if (currentTick !== lastTick) {
-                renderHeatmapLayers();
-            }
 
             requestAnimationFrame(updateAndDraw);
         }
 
         // Accessibility Toggles
-        const modeToggleBtn = document.getElementById('mode-toggle');
-        const bodyElement = document.body;
-        const statusSummary = document.getElementById('status-summary');
-
-        modeToggleBtn.addEventListener('click', () => {
+        const modeBtn = document.getElementById('mode-toggle');
+        modeBtn.addEventListener('click', () => {
             isElderMode = !isElderMode;
-            if (isElderMode) {
-                bodyElement.classList.add('elder-mode');
-                modeToggleBtn.innerHTML = "🧒 Switch to Standard Mode";
-                modeToggleBtn.classList.replace('bg-blue-600', 'bg-gray-700');
-                statusSummary.innerHTML = `
-                    <p class="font-bold text-red-700 text-lg">⚠️ AIR IS POOR TODAY</p>
-                    <p class="text-md text-gray-900 leading-relaxed font-medium">
-                        Factories near the highway are releasing heavy smoke. It is recommended to skip your daily walk outside until this clears up.
-                    </p>
-                `;
-                renderHeatmapLayers(1.4);
-            } else {
-                bodyElement.classList.remove('elder-mode');
-                modeToggleBtn.innerHTML = "👴 Switch to Elder Mode";
-                modeToggleBtn.classList.replace('bg-gray-700', 'bg-blue-600');
-                statusSummary.innerHTML = `
-                    <p class="text-sm text-gray-600 leading-relaxed">
-                        Showing hyper-local real-time environmental metrics compiled from weather stations and local factory monitoring sensors.
-                    </p>
-                    <div class="p-3 bg-red-50 text-red-800 rounded-lg border border-red-100 font-medium text-sm flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-red-600 animate-pulse"></span>
-                        Status: Unhealthy Air Quality Plumes Active
-                    </div>
-                `;
-                renderHeatmapLayers(1);
-            }
+            document.body.classList.toggle('elder-mode', isElderMode);
+            modeBtn.innerHTML = isElderMode ? "🧒 Switch to Standard Mode" : "👴 Switch to Elder Mode";
+            modeBtn.classList.replace(isElderMode ? 'bg-blue-600' : 'bg-gray-700', isElderMode ? 'bg-gray-700' : 'bg-blue-600');
+            renderHeatmapLayers();
         });
 
-        loadPollutionData();
+        // =====================================================================
+        // DATA INGESTION: Fetch Local Engine + Live APIs
+        // =====================================================================
+        fetch('http://localhost:8000/api/map/initial-blocks')
+            .then(res => res.json())
+            .then(data => {
+                windSpeed = data.live_weather.speed;
+                windDeg = data.live_weather.direction;
+                document.getElementById('wind-display').innerText = 
+                    `💨 Live Wind: ${windSpeed.toFixed(1)} m/s from ${windDeg}°`;
+
+                const sources = data.features.filter(f => f.properties.layer_type === 'emission_source');
+                
+                emissionSources = sources.map((source, index) => ({
+                    name: source.properties.source_name,
+                    lat: source.geometry.coordinates[1], 
+                    lng: source.geometry.coordinates[0],
+                    intensity: index === 0 ? 1.0 : 0.4,
+                    pm25: source.properties.core_pollutants.pm25,
+                    no2: source.properties.core_pollutants.no2
+                }));
+
+                renderHeatmapLayers(1);
+                requestAnimationFrame(updateAndDraw);
+            })
+            .catch(err => console.error("Could not fetch backend data. Is main.py running?", err));
     </script>
 </body>
 </html>
