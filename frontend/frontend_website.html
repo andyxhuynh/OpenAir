@@ -193,6 +193,15 @@
             if (compassArrow) compassArrow.setAttribute('transform', `translate(24 24) rotate(${windFlowDeg})`);
         }
 
+        function createFactoryIcon(size = [42, 42]) {
+            return L.icon({
+                iconUrl: 'pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg',
+                iconSize: size,
+                iconAnchor: [size[0] / 2, size[1]],
+                popupAnchor: [0, -size[1] / 2]
+            });
+        }
+
         function applyPollutionData(data) {
             if (data.wind) {
                 windSpeed = data.wind.speed ?? windSpeed;
@@ -331,16 +340,19 @@
                 heatPoints.push([source.lat + driftLat * 1.0, source.lng + driftLng * 1.0, 0.55]);
                 heatPoints.push([source.lat + driftLat * 1.5, source.lng + driftLng * 1.5, 0.35]);
 
-                const adjustedIcon = L.icon({
-                    iconUrl: 'pngtree-factory-pollution-glyph-icon-vector-png-image_5175208.jpg',
-                    iconSize: isElderMode ? [60, 60] : [42, 42],
-                    iconAnchor: isElderMode ? [30, 30] : [21, 21]
-                });
+                const markerIcon = createFactoryIcon(isElderMode ? [60, 60] : [42, 42]);
 
-                const factoryMarker = L.marker([source.lat, source.lng], { 
-                    icon: adjustedIcon,
+                const factoryMarker = L.marker([source.lat, source.lng], {
+                    icon: markerIcon,
                     pane: 'iconOverlayPane'
                 }).addTo(map);
+
+                factoryMarker.bindTooltip(source.name, {
+                    permanent: true,
+                    direction: 'top',
+                    offset: [0, -12],
+                    className: 'factory-tooltip'
+                }).openTooltip();
 
                 activeMarkers.push(factoryMarker);
             });
