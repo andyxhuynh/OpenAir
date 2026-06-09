@@ -48,6 +48,7 @@
     </header>
 
     <main class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
         <div class="space-y-6 lg:col-span-1">
             <div class="bg-white p-6 rounded-xl shadow-sm border">
                 <h2 class="text-lg font-bold mb-3">📍 Villeurbanne / Lyon</h2>
@@ -80,22 +81,46 @@
             </div>
         </div>
 
-        <div class="lg:col-span-2 bg-white p-4 rounded-xl shadow-sm border flex flex-col gap-4">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                <h2 class="text-md font-bold">Live Grid</h2>
-                
-                <div class="flex items-center gap-2 text-xs font-semibold">
-                    <span class="text-emerald-600">Safe Baseline</span>
-                    <div class="w-24 h-3 rounded bg-gradient-to-r from-emerald-400 via-yellow-400 to-red-500 opacity-80"></div>
-                    <span class="text-red-600">Plume Risk</span>
-                </div>
+        <div class="lg:col-span-2 flex flex-col gap-6">
+            
+            <div class="bg-white p-4 rounded-xl shadow-sm border flex flex-col gap-4">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                    <h2 class="text-md font-bold">Live Grid</h2>
+                    
+                    <div class="flex items-center gap-2 text-xs font-semibold">
+                        <span class="text-emerald-600">Safe Baseline</span>
+                        <div class="w-24 h-3 rounded bg-gradient-to-r from-emerald-400 via-yellow-400 to-red-500 opacity-80"></div>
+                        <span class="text-red-600">Plume Risk</span>
+                    </div>
 
-                <div id="wind-display" class="px-3 py-1 bg-blue-50 text-blue-800 text-xs font-bold rounded-full border border-blue-200">
-                    📡 Fetching Live Weather...
+                    <div id="wind-display" class="px-3 py-1 bg-blue-50 text-blue-800 text-xs font-bold rounded-full border border-blue-200">
+                        📡 Fetching Live Weather...
+                    </div>
+                </div>
+                
+                <div id="map" class="relative">
+                    <canvas id="map-overlay"></canvas>
                 </div>
             </div>
-            
-            <div id="map" class="relative"><canvas id="map-overlay"></canvas></div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border w-full">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-md font-bold text-gray-800">Time Slider</h3>
+                    <div class="flex items-center gap-3">
+                        <span id="time-label" class="text-blue-600 font-bold text-sm">Live Conditions</span>
+                        <span class="text-xs font-semibold px-2 py-1 bg-purple-100 text-purple-800 rounded-md">Past 12 Hours</span>
+                    </div>
+                </div>
+                
+                <input type="range" id="time-slider" min="-12" max="0" step="1" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600">
+                
+                <div class="flex justify-between text-xs text-gray-500 mt-3 font-medium">
+                    <span>-12 Hours</span>
+                    <span>-6 Hours</span>
+                    <span class="text-blue-600 font-bold">Now</span>
+                </div>
+            </div>
+
         </div>
     </main>
 
@@ -119,7 +144,7 @@
             });
         }
 
-        // FIXED: Capped the maximum size multiplier to 2.0 so Leaflet's internal canvas never glitches/clips
+        // Prevents Leaflet's internal canvas from breaking when zoomed in too far
         function getHeatmapScaleFromZoom() {
             const z = map.getZoom();
             if (z >= 16) return 2.0; 
@@ -141,7 +166,7 @@
                 for (let g = 4.8000; g <= 4.9300; g += 0.0045) heatPoints.push([l, g, 0.15]);
             }
 
-            // Plume Drift Math
+            // Plume Drift Math based on current wind
             const rad = windDeg * Math.PI / 180;
             const driftLat = Math.cos(rad) * windSpeed * 0.0018;
             const driftLng = Math.sin(rad) * windSpeed * 0.0018;
@@ -167,11 +192,10 @@
                 factoryMarkers.push(marker);
             });
 
-            // FIXED: Radius and Blur are strictly matched and capped to prevent hard circles
             heatmapLayer = L.heatLayer(heatPoints, { 
                 radius: 35 * sizeMultiplier, 
                 blur: 35 * sizeMultiplier, 
-                maxZoom: 16, // Lets Leaflet natively handle zooming past 16 without recalculating
+                maxZoom: 16, 
                 gradient: { 0.10: '#10b981', 0.45: '#facc15', 0.70: '#f97316', 0.90: '#ef4444' } 
             }).addTo(map);
         }
@@ -199,6 +223,9 @@
             lastTime = now;
 
             emissionSources.forEach(source => {
+                // Only emit heavy visual particles if pollution is above baseline
+                if (source.pm25 <= 15.0) return;
+
                 const count = Math.floor((60 * source.intensity) * dt);
                 const pt = map.latLngToContainerPoint([source.lat, source.lng]);
                 for (let i = 0; i < count; i++) {
@@ -239,31 +266,65 @@
         });
 
         // =====================================================================
-        // DATA INGESTION: Fetch Local Engine + Live APIs
+        // DATA INGESTION & HISTORICAL TIMELINE LOGIC
         // =====================================================================
-        fetch('http://localhost:8000/api/map/initial-blocks')
-            .then(res => res.json())
-            .then(data => {
-                windSpeed = data.live_weather.speed;
-                windDeg = data.live_weather.direction;
-                document.getElementById('wind-display').innerText = 
-                    `💨 Live Wind: ${windSpeed.toFixed(1)} m/s from ${windDeg}°`;
+        const timeSlider = document.getElementById('time-slider');
+        const timeLabel = document.getElementById('time-label');
 
-                const sources = data.features.filter(f => f.properties.layer_type === 'emission_source');
-                
-                emissionSources = sources.map((source, index) => ({
-                    name: source.properties.source_name,
-                    lat: source.geometry.coordinates[1], 
-                    lng: source.geometry.coordinates[0],
-                    intensity: index === 0 ? 1.0 : 0.4,
-                    pm25: source.properties.core_pollutants.pm25,
-                    no2: source.properties.core_pollutants.no2
-                }));
+        function fetchMapData(hoursAgo) {
+            fetch(`http://localhost:8000/api/map/initial-blocks?hours_ago=${hoursAgo}`)
+                .then(res => res.json())
+                .then(data => {
+                    // Update global weather vectors based on server response
+                    windSpeed = data.live_weather.speed;
+                    windDeg = data.live_weather.direction;
+                    document.getElementById('wind-display').innerText = 
+                        `💨 Wind Vector: ${windSpeed.toFixed(1)} m/s from ${windDeg.toFixed(0)}°`;
 
-                renderHeatmapLayers(1);
-                requestAnimationFrame(updateAndDraw);
-            })
-            .catch(err => console.error("Could not fetch backend data. Is main.py running?", err));
+                    const sources = data.features.filter(f => f.properties.layer_type === 'emission_source');
+                    
+                    emissionSources = sources.map((source) => {
+                        const pm = source.properties.core_pollutants.pm25;
+                        
+                        // Scale intensity accurately against real danger thresholds (PM2.5 > 35 is highly toxic)
+                        let calculatedIntensity = pm / 35.0; 
+                        calculatedIntensity = Math.max(0.15, Math.min(1.0, calculatedIntensity));
+
+                        return {
+                            name: source.properties.source_name,
+                            lat: source.geometry.coordinates[1], 
+                            lng: source.geometry.coordinates[0],
+                            intensity: calculatedIntensity,
+                            pm25: pm,
+                            no2: source.properties.core_pollutants.no2
+                        };
+                    });
+
+                    renderHeatmapLayers(getHeatmapScaleFromZoom());
+                })
+                .catch(err => console.error("Could not fetch backend data.", err));
+        }
+
+        // Initialize map with live data
+        fetchMapData(0);
+        requestAnimationFrame(updateAndDraw);
+
+        // Timeline slider listener
+        timeSlider.addEventListener('change', (e) => {
+            const timeOffset = parseInt(e.target.value);
+            const hoursAgo = Math.abs(timeOffset);
+
+            if (timeOffset === 0) {
+                timeLabel.innerText = "Live Conditions";
+                timeLabel.classList.replace('text-red-600', 'text-blue-600');
+            } else {
+                timeLabel.innerText = `${hoursAgo} Hours Ago`;
+                timeLabel.classList.replace('text-blue-600', 'text-red-600');
+            }
+            
+            fetchMapData(hoursAgo);
+        });
+
     </script>
 </body>
 </html>
