@@ -244,22 +244,56 @@
 
         async function loadPollutionData() {
             try {
-                const response = await fetch(pollutionDataUrl);
-                const data = await response.json();
-                applyPollutionData(data);
+                // Try to fetch from backend API first
+                const response = await fetch('http://localhost:8000/api/map/initial-blocks');
+                const geojsonData = await response.json();
+                
+                // Transform GeoJSON features into pollution data format
+                const sources = geojsonData.features
+                    .filter(f => f.properties.layer_type === 'emission_source')
+                    .map(f => ({
+                        name: f.properties.source_name,
+                        latitude: f.geometry.coordinates[1],
+                        longitude: f.geometry.coordinates[0],
+                        emblem_type: f.properties.emblem_type,
+                        risk_level: f.properties.core_pollutants.pm25 > 30 ? 'high' : 'moderate'
+                    }));
+                
+                const pollutionData = {
+                    wind: { speed: 2.0, direction: 225 },
+                    sources: sources.length > 0 ? sources : [
+                        {
+                            name: "Vallée de la Chimie Industrial Complex",
+                            latitude: 45.76,
+                            longitude: 4.878,
+                            emblem_type: "factory",
+                            risk_level: "high"
+                        }
+                    ]
+                };
+                
+                applyPollutionData(pollutionData);
             } catch (error) {
-                console.warn('Unable to load pollution data JSON, using fallback defaults.', error);
-                emissionSources = [
-                    {
-                        name: "Villeurbanne Industrial Corridor (Factory Alpha)",
-                        lat: 45.7830,
-                        lng: 4.8820,
-                        pollution: "high"
-                    }
-                ];
-                updateWindUI();
-                renderHeatmapLayers(1);
-                requestAnimationFrame(updateAndDraw);
+                console.warn('Backend unavailable, falling back to local JSON file:', error);
+                try {
+                    // Fallback to local JSON file
+                    const response = await fetch(pollutionDataUrl);
+                    const data = await response.json();
+                    applyPollutionData(data);
+                } catch (fallbackError) {
+                    console.warn('Unable to load pollution data, using hardcoded defaults.', fallbackError);
+                    emissionSources = [
+                        {
+                            name: "Villeurbanne Industrial Corridor (Factory Alpha)",
+                            lat: 45.7830,
+                            lng: 4.8820,
+                            pollution: "high"
+                        }
+                    ];
+                    updateWindUI();
+                    renderHeatmapLayers(1);
+                    requestAnimationFrame(updateAndDraw);
+                }
             }
         }
 
