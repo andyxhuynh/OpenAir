@@ -284,14 +284,15 @@
 
                     const sources = data.features.filter(f => f.properties.layer_type === 'emission_source');
                     
-                    let isDangerous = false;
+                    // NEW: Keep track of exactly which factories are dangerous right now
+                    let dangerousFacilities = [];
 
                     emissionSources = sources.map((source) => {
                         const pm = source.properties.core_pollutants.pm25;
                         
-                        // Check if this specific facility is over the danger threshold
+                        // If PM2.5 is toxic, add this specific factory's name to our alert list
                         if (pm > 35.0) {
-                            isDangerous = true;
+                            dangerousFacilities.push(source.properties.source_name);
                         }
                         
                         let calculatedIntensity = pm / 35.0; 
@@ -307,11 +308,14 @@
                         };
                     });
 
-                    // NEW FIX: Toggle the Top Alert Banner dynamically
-                    if (isDangerous) {
+                    // NEW FIX: Dynamically update the banner text using the factory names
+                    if (dangerousFacilities.length > 0) {
                         alertBanner.classList.remove('hidden');
                         
-                        // Update side panel to match the danger state
+                        // Join the names together (e.g., "Factory A" or "Factory A and Factory B")
+                        const facilityNames = dangerousFacilities.join(" and ");
+                        alertBanner.innerText = `⚠️ CRITICAL AIR ALERT: High emissions detected near ${facilityNames}. Vulnerable groups should stay indoors.`;
+                        
                         statusBadge.className = "p-3 bg-red-50 text-red-800 rounded-lg font-medium text-sm";
                         statusBadge.innerText = "Status: Plumes Active";
                         
@@ -325,7 +329,6 @@
                     } else {
                         alertBanner.classList.add('hidden');
                         
-                        // Update side panel to match the safe state
                         statusBadge.className = "p-3 bg-emerald-50 text-emerald-800 rounded-lg font-medium text-sm";
                         statusBadge.innerText = "Status: Safe Baseline";
                         
