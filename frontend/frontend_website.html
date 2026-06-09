@@ -354,7 +354,16 @@
                     className: 'factory-tooltip'
                 }).openTooltip();
 
-                activeMarkers.push(factoryMarker);
+                const fallbackCircle = L.circleMarker([source.lat, source.lng], {
+                    radius: isElderMode ? 12 : 8,
+                    color: '#dc2626',
+                    fillColor: '#fca5a5',
+                    fillOpacity: 0.65,
+                    weight: 2,
+                    pane: 'overlayPane'
+                }).addTo(map);
+
+                activeMarkers.push(factoryMarker, fallbackCircle);
             });
 
             heatmapLayer = L.heatLayer(heatPoints, {
